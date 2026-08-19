@@ -1,0 +1,23 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "sneakerrag"
+version = "0.1.0"
+description = "RAG agent that finds the cheapest listing for a Nike / adidas / New Balance sneaker across six retail sites"
+readme = "README.md"
+requires-python = ">=3.10"
+license = { text = "MIT" }
+dependencies = []          # the core runs on the standard library alone
+
+[project.optional-dependencies]
+claude = ["anthropic>=0.40"]        # natural-language answers
+live = ["requests>=2.31"]           # nicer HTTP for live scraping
+dense = ["sentence-transformers>=2.2"]   # optional dense embeddings
+
+[project.scripts]
+sneakerrag = "sneakerrag.cli:main"
+
+[tool.setuptools.packages.find]
+include = ["sneakerrag*"]

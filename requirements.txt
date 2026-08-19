@@ -1,0 +1,3 @@
+# The agent runs with zero third-party packages. These are optional upgrades:
+anthropic>=0.40        # Claude-written answers and query understanding (`ask`)
+requests>=2.31         # connection pooling for live scraping (`ingest --live`)

@@ -1,0 +1,11 @@
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+*.egg-info/
+build/
+dist/
+
+# Local catalogue + scrape cache (regenerate with `sneakerrag ingest`)
+data/catalog.db
+.cache/
