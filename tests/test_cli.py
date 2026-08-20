@@ -26,23 +26,31 @@ class TestCli(unittest.TestCase):
             code = main(["--db", cls.db, *args])
         return code, buf.getvalue()
 
-    def test_ingest_loaded_all_six_sites(self):
+    def test_ingest_loaded_every_site(self):
         code, out = self.invoke("stats")
         self.assertEqual(code, 0)
         stats = json.loads(out)
-        self.assertEqual(len(stats["by_source"]), 6)
+        self.assertEqual(len(stats["by_source"]), 7)
         self.assertGreaterEqual(stats["listings"], 30)
 
     def test_sources_listing(self):
         code, out = self.invoke("sources")
         self.assertEqual(code, 0)
-        self.assertIn("footlocker", out)
+        self.assertIn("stadiumgoods", out)
         self.assertIn("New Balance", out)
+        self.assertIn("resale", out)
 
     def test_compare_marks_a_cheapest_listing(self):
         code, out = self.invoke("compare", "air", "max", "90", "--no-color")
         self.assertEqual(code, 0)
         self.assertIn("CHEAPEST", out)
+
+    def test_compare_size_flag_reprices(self):
+        _, small = self.invoke("compare", "dunk", "low", "--size", "8", "--no-color", "--limit", "1")
+        _, large = self.invoke("compare", "dunk", "low", "--size", "13", "--no-color", "--limit", "1")
+        self.assertIn("prices shown for US 8", small)
+        self.assertIn("prices shown for US 13", large)
+        self.assertNotEqual(small, large)
 
     def test_compare_json_is_machine_readable(self):
         code, out = self.invoke("compare", "samba", "--json", "--limit", "1")

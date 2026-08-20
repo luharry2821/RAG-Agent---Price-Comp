@@ -12,6 +12,7 @@ from ..normalize import (
     detect_gender,
     normalize_brand,
     normalize_colorway,
+    normalize_size,
     normalize_sizes,
     normalize_style_code,
     parse_price,
@@ -31,10 +32,15 @@ class SiteSpec:
     search_url: str                       # {q} is replaced with the url-encoded query
     product_link: str                     # regex matching product page hrefs
     brands: tuple[str, ...] = ()          # () = carries all three brands
+    kind: str = "retail"                  # brand | retail | resale
     notes: str = ""
 
     def sells(self, brand: str) -> bool:
         return not self.brands or brand in self.brands
+
+    @property
+    def is_resale(self) -> bool:
+        return self.kind == "resale"
 
 
 def build_listing(spec: SiteSpec, data: dict[str, Any]) -> Listing | None:
@@ -64,10 +70,31 @@ def build_listing(spec: SiteSpec, data: dict[str, Any]) -> Listing | None:
     model = data.get("model") or parsed["model"]
 
     shipping, _ = parse_price(data.get("shipping"))
+    fees, _ = parse_price(data.get("fees"))
+
+    # Resale marketplaces quote a price per size; keep the whole curve so a
+    # size-specific question gets a size-specific answer.
+    size_prices: dict[str, float] = {}
+    for raw_size, raw_price in (data.get("size_prices") or {}).items():
+        value, _ = parse_price(raw_price)
+        if value is not None:
+            size_prices[normalize_size(raw_size)] = value
+    if size_prices:
+        price = min(price, min(size_prices.values()))   # headline = lowest ask
+
+    sizes = normalize_sizes(data.get("sizes"))
+    for size in size_prices:
+        if size not in sizes:
+            sizes.append(size)
+
+    condition = str(data.get("condition") or "new").strip().lower()
+    if condition not in ("new", "used"):
+        condition = "used" if "used" in condition or "pre-owned" in condition else "new"
 
     return Listing(
         source=spec.key,
         source_name=spec.name,
+        source_kind=spec.kind,
         url=urljoin(spec.home, url),
         title=title,
         brand=brand,
@@ -79,10 +106,12 @@ def build_listing(spec: SiteSpec, data: dict[str, Any]) -> Listing | None:
         list_price=list_price,
         currency=(data.get("currency") or currency or "USD").upper(),
         shipping=shipping,
+        fees=fees,
         in_stock=bool(data.get("in_stock", True)),
-        sizes=normalize_sizes(data.get("sizes")),
+        sizes=sizes,
+        size_prices=size_prices,
         gender=gender if gender in ("men", "women", "kids", "unisex") else "",
-        condition=str(data.get("condition") or "new"),
+        condition=condition,
         image=str(data.get("image") or ""),
         scraped_at=str(data.get("scraped_at") or utcnow()),
         raw={k: v for k, v in data.items() if k not in ("raw",)},

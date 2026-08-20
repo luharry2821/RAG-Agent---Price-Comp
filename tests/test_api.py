@@ -40,9 +40,21 @@ class TestApi(unittest.TestCase):
         self.assertTrue(body["ok"])
         self.assertGreater(body["listings"], 0)
 
-    def test_sources_lists_six_sites(self):
+    def test_sources_lists_every_site(self):
         _, body = self.get("/sources")
-        self.assertEqual(len(body["sources"]), 6)
+        keys = {s["key"] for s in body["sources"]}
+        self.assertEqual(keys, {"nike", "adidas", "newbalance", "stadiumgoods",
+                                "flightclub", "goat", "kickscrew"})
+        self.assertEqual({s["kind"] for s in body["sources"]}, {"brand", "resale"})
+
+    def test_compare_prices_the_requested_size(self):
+        _, body = self.get("/compare?q=dunk+low&size=10&limit=1")
+        offers = body["products"][0]["offers"]
+        self.assertTrue(offers)
+        for offer in offers:
+            self.assertEqual(offer["size"], "10")
+            if offer["size_prices"]:
+                self.assertEqual(offer["price"], offer["size_prices"]["10"])
 
     def test_compare_returns_a_cheapest_offer(self):
         _, body = self.get("/compare?q=air+max+90&limit=1")

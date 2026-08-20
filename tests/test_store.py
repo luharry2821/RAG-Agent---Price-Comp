@@ -47,6 +47,16 @@ class TestCatalog(unittest.TestCase):
         self.assertEqual(len(drops), 4)
         self.assertAlmostEqual(drops[0]["drop_pct"], 20.0, places=0)
 
+    def test_resale_fields_survive_the_round_trip(self):
+        self.catalog.upsert_listings(self.listings)
+        stored = {l.source: l for l in self.catalog.listings()}
+        goat = stored["goat"]
+        self.assertEqual(goat.source_kind, "resale")
+        self.assertEqual(goat.fees, 5.0)
+        self.assertEqual(goat.size_prices["10.5"], 118.0)
+        self.assertEqual(goat.price_for("10.5"), 118.0)
+        self.assertEqual(stored["nike"].source_kind, "brand")
+
     def test_vectors_cached_and_reused(self):
         vectors = [[0.5] * 8 for _ in self.listings]
         self.catalog.upsert_listings(self.listings, vectors)
@@ -56,7 +66,7 @@ class TestCatalog(unittest.TestCase):
     def test_filters_and_stats(self):
         self.catalog.upsert_listings(self.listings)
         self.assertEqual(len(self.catalog.listings(brand="nike")), 4)
-        self.assertEqual(len(self.catalog.listings(source="footlocker")), 1)
+        self.assertEqual(len(self.catalog.listings(source="stadiumgoods")), 1)
         stats = self.catalog.stats()
         self.assertEqual(stats["listings"], 4)
         self.assertEqual(stats["by_brand"]["nike"], 4)

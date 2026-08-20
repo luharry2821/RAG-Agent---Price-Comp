@@ -53,8 +53,9 @@ def make_handler(agent: SneakerAgent):
                                        "llm": getattr(agent.llm, "name", "none")})
                 if path == "/sources":
                     return self._send({"sources": [
-                        {"key": s.key, "name": s.name, "home": s.home,
-                         "brands": list(s.brands) or ["nike", "adidas", "new balance"]}
+                        {"key": s.key, "name": s.name, "home": s.home, "kind": s.kind,
+                         "brands": list(s.brands) or ["nike", "adidas", "new balance"],
+                         "notes": s.notes}
                         for s in SITES]})
                 if path == "/stats":
                     return self._send(agent.catalog.stats())
@@ -65,15 +66,25 @@ def make_handler(agent: SneakerAgent):
                     limit = int(params.get("limit", 3))
                     if path == "/ask":
                         return self._send(agent.answer(query, limit=limit).to_dict())
-                    spec, products = agent.compare(query, limit=limit)
+                    # Resolve size/condition before comparing so retrieval and
+                    # ranking both see the constraint.
+                    spec = agent.understand(query)
                     if params.get("size"):
                         spec.size = params["size"]
+                    if params.get("condition"):
+                        spec.condition = params["condition"]
+                    spec, products = agent.compare(query, spec=spec, limit=limit)
                     return self._send({
                         "query": query, "spec": spec.to_dict(),
                         "products": [{
                             "product": p.display_name, "style_code": p.style_code,
-                            "cheapest": _offer_json(p.best_offer(size=spec.size)),
-                            "offers": [_offer_json(o) for o in p.offers(size=spec.size)],
+                            "at_retail": p.at_retail,
+                            "cheapest": _offer_json(p.best_offer(size=spec.size,
+                                                                condition=spec.condition),
+                                                    spec.size),
+                            "offers": [_offer_json(o, spec.size)
+                                       for o in p.offers(size=spec.size,
+                                                         condition=spec.condition)],
                         } for p in products]})
                 if path == "/product":
                     code = normalize_style_code(params.get("style_code", ""))
@@ -84,6 +95,7 @@ def make_handler(agent: SneakerAgent):
                     product = cluster_listings(listings)[0]
                     return self._send({
                         "product": product.display_name, "style_code": product.style_code,
+                        "at_retail": product.at_retail,
                         "offers": [_offer_json(o) for o in product.offers(in_stock_only=False)]})
                 self._send({"error": "not found",
                             "endpoints": ["/health", "/sources", "/stats", "/compare",
@@ -94,16 +106,22 @@ def make_handler(agent: SneakerAgent):
     return Handler
 
 
-def _offer_json(listing) -> dict | None:
+def _offer_json(listing, size: str = "") -> dict | None:
     if listing is None:
         return None
     return {
-        "source": listing.source_name, "url": listing.url, "title": listing.title,
-        "price": listing.price, "shipping": listing.shipping,
-        "total_price": listing.total_price, "currency": listing.currency,
-        "display_price": fmt_money(listing.total_price, listing.currency),
-        "in_stock": listing.in_stock, "sizes": listing.sizes,
-        "discount_pct": listing.discount_pct, "style_code": listing.style_code,
+        "source": listing.source_name, "source_kind": listing.source_kind,
+        "url": listing.url, "title": listing.title,
+        "price": listing.price_for(size), "from_price": listing.price,
+        "shipping": listing.shipping, "fees": listing.fees,
+        "total_price": listing.total_for(size), "currency": listing.currency,
+        "display_price": fmt_money(listing.total_for(size), listing.currency),
+        "size": size or None, "size_prices": listing.size_prices or None,
+        "condition": listing.condition, "in_stock": listing.in_stock,
+        "sizes": listing.sizes, "list_price": listing.list_price,
+        "discount_pct": listing.discount_pct_for(size),
+        "premium_pct": listing.premium_pct_for(size),
+        "style_code": listing.style_code,
     }
 
 

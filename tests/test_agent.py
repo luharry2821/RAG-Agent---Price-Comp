@@ -52,15 +52,15 @@ class TestAgentEndToEnd(unittest.TestCase):
         cls.tmp = tempfile.TemporaryDirectory()
         catalog = Catalog(Path(cls.tmp.name) / "agent.db")
         catalog.upsert_listings(air_max_90_across_sites() + [
-            listing("footlocker", "adidas Samba OG - Cloud White/Core Black", 99.99,
+            listing("stadiumgoods", "adidas Samba OG - Cloud White/Core Black", 99.99,
                     style_code="B75806", list_price=100.0),
-            listing("jdsports", "adidas Samba OG Unisex", 84.99, shipping=6.99,
+            listing("goat", "adidas Samba OG Unisex", 84.99, shipping=6.99,
                     style_code="B75806", list_price=100.0),
             listing("adidas", "Samba OG Shoes Cloud White/Core Black", 100.0,
                     style_code="B75806"),
             listing("newbalance", "New Balance 990v6 Men's Grey", 199.99,
                     style_code="M990GL6", sizes=["9", "10"]),
-            listing("dickssportinggoods", "New Balance Men's 990v6 Grey", 179.99,
+            listing("kickscrew", "New Balance Men's 990v6 Grey", 179.99,
                     style_code="M990GL6", in_stock=False),
         ])
         cls.catalog = catalog
@@ -74,15 +74,15 @@ class TestAgentEndToEnd(unittest.TestCase):
     def test_cheapest_listing_wins_on_delivered_price(self):
         spec, products = self.agent.compare("cheapest adidas samba og", limit=1)
         best = products[0].best_offer()
-        self.assertEqual(best.source, "jdsports")            # 84.99 + 6.99 = 91.98
-        self.assertEqual(products[0].best_offer(include_shipping=False).source, "jdsports")
+        self.assertEqual(best.source, "goat")            # 84.99 + 6.99 = 91.98
+        self.assertEqual(products[0].best_offer(include_shipping=False).source, "goat")
 
     def test_shipping_can_flip_the_winner(self):
         spec, products = self.agent.compare("adidas samba og", limit=1)
         product = products[0]
-        expensive_shipping = [l for l in product.listings if l.source == "jdsports"][0]
+        expensive_shipping = [l for l in product.listings if l.source == "goat"][0]
         expensive_shipping.shipping = 20.0                   # 84.99 + 20 = 104.99
-        self.assertEqual(product.best_offer().source, "footlocker")
+        self.assertEqual(product.best_offer().source, "stadiumgoods")
 
     def test_all_six_style_code_siblings_are_grouped(self):
         _, products = self.agent.compare("samba", limit=1)

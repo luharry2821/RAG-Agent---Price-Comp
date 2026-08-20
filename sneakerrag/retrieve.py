@@ -147,12 +147,17 @@ def _passes_filters(listing: Listing, spec: QuerySpec) -> bool:
         return False
     if spec.size and not listing.has_size(spec.size):
         return False
+    if spec.condition and listing.condition != spec.condition:
+        return False
     if spec.gender and listing.gender and listing.gender not in (spec.gender, "unisex"):
         return False
     if spec.max_price is not None:
-        price = listing.total_price if spec.include_shipping else listing.price
+        # Budget applies to the requested size: on a resale marketplace the
+        # headline "from" price is usually a size nobody asked for.
+        price = (listing.total_for(spec.size) if spec.include_shipping
+                 else listing.price_for(spec.size))
         if price > spec.max_price:
             return False
-    if spec.min_discount is not None and listing.discount_pct < spec.min_discount:
+    if spec.min_discount is not None and listing.discount_pct_for(spec.size) < spec.min_discount:
         return False
     return True

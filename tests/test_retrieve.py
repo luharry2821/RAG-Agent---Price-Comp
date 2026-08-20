@@ -9,10 +9,10 @@ from tests.helpers import air_max_90_across_sites, listing
 def build_index() -> VectorIndex:
     index = VectorIndex()
     index.add(air_max_90_across_sites() + [
-        listing("footlocker", "adidas Samba OG - Cloud White/Core Black", 100,
+        listing("stadiumgoods", "adidas Samba OG - Cloud White/Core Black", 100,
                 style_code="B75806"),
         listing("newbalance", "New Balance 990v6 Men's Grey", 200, style_code="M990GL6"),
-        listing("jdsports", "Nike Dunk Low Retro Men's White/Black", 95,
+        listing("goat", "Nike Dunk Low Retro Men's White/Black", 95,
                 style_code="DD1391-100", in_stock=False),
     ])
     return index

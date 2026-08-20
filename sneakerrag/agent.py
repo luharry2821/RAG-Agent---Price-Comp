@@ -80,6 +80,7 @@ Return ONLY a JSON object with these keys (omit a key when the question does not
   gender: string - one of "men", "women", "kids", "unisex"
   max_price: number - budget ceiling in USD
   min_discount: number - required percent off
+  condition: string - "new" or "used" if the shopper asked for one
   in_stock_only: boolean
   include_shipping: boolean - true if the user cares about delivered cost
   intent: string - "compare" (default), "deals", or "lookup"
@@ -127,6 +128,11 @@ def heuristic_spec(question: str) -> QuerySpec:
         spec.include_shipping = False
     if re.search(r"\b(sold out|out of stock|any listing)\b", text, re.I):
         spec.in_stock_only = False
+
+    if re.search(r"\b(brand new|deadstock|ds|unworn|new only|new pair)\b", text, re.I):
+        spec.condition = "new"
+    elif re.search(r"\b(used|pre-?owned|worn|beaters)\b", text, re.I):
+        spec.condition = "used"
 
     for intent, pattern in _INTENT_HINTS:
         if pattern.search(text):
@@ -182,6 +188,8 @@ def refine_spec_with_llm(question: str, spec: QuerySpec, llm: Any) -> QuerySpec:
         out.max_price = float(data["max_price"])
     if out.min_discount is None and isinstance(data.get("min_discount"), (int, float)):
         out.min_discount = float(data["min_discount"])
+    if not out.condition and data.get("condition") in ("new", "used"):
+        out.condition = data["condition"]
     if isinstance(data.get("in_stock_only"), bool):
         out.in_stock_only = data["in_stock_only"]
     if isinstance(data.get("include_shipping"), bool):
@@ -204,13 +212,17 @@ You are given a shopper's question and a table of retailer listings that were
 retrieved from a catalogue. Rules:
 
 - Use ONLY the listings provided. Never invent a retailer, price, size or URL.
-- Lead with the single cheapest qualifying listing: retailer, price, and why it wins
-  (sale price, free shipping, etc).
-- Then compare the other retailers briefly so the saving is visible.
+- Lead with the single cheapest qualifying listing: seller, delivered price, and why it
+  wins (sale price, free shipping, no fees, cheaper size).
+- Then compare the other sellers briefly so the saving is visible.
 - Cite every price with the bracketed number shown next to the listing, e.g. [2].
+- Prices on resale marketplaces are per size and exclude fees until checkout; always
+  quote the delivered price for the size asked about, and say when a listing is used
+  rather than new.
+- If the shoe is sold out at the brand store and only resale listings remain, say so,
+  and say how far above MSRP the asks are.
 - Call out constraints that could not be met (size unavailable, out of stock,
   nothing under the stated budget) instead of silently ignoring them.
-- If listings for a size or SKU are missing, say so plainly.
 - Be concise: a short paragraph plus a compact list. No preamble, no markdown headings."""
 
 
@@ -322,30 +334,35 @@ class SneakerAgent:
             header = product.display_name
             if product.style_code:
                 header += f"  (style {product.style_code})"
+            if product.style_code or product.listings:
+                header += f"  — MSRP {fmt_money(_msrp(product), 'USD')}" if _msrp(product) else ""
+            if not product.at_retail and product.has_resale_listings:
+                header += "  [sold out at the brand store; resale only]"
             lines.append(header)
             # Everything in the cluster is cited, including listings that fail
             # the buyer's constraints — the flags below explain each exclusion.
-            for listing in product.offers(size="", in_stock_only=False,
-                                          include_shipping=spec.include_shipping):
+            # Cite every listing in the cluster (size filter off), but order
+            # them by what the requested size actually costs.
+            everything = sorted(product.offers(size="", in_stock_only=False,
+                                               include_shipping=spec.include_shipping),
+                                key=lambda l: l.total_for(spec.size))
+            for listing in everything:
                 n += 1
-                citations.append(Citation(n=n, source_name=listing.source_name, url=listing.url,
-                                          price=listing.total_price, currency=listing.currency))
-                flags = []
+                notes = []
                 if not listing.in_stock:
-                    flags.append("OUT OF STOCK")
+                    notes.append("out of stock")
                 if spec.size and not listing.has_size(spec.size):
-                    flags.append(f"size {spec.size} unavailable")
-                if listing.discount_pct:
-                    flags.append(f"{listing.discount_pct:g}% off {fmt_money(listing.list_price, listing.currency)}")
-                ship = ("free shipping" if listing.shipping == 0
-                        else f"+{fmt_money(listing.shipping, listing.currency)} shipping"
-                        if listing.shipping else "shipping unknown")
-                lines.append(
-                    f"  [{n}] {listing.source_name}: {fmt_money(listing.price, listing.currency)}"
-                    f" ({ship}; delivered {fmt_money(listing.total_price, listing.currency)})"
-                    + (f" — {', '.join(flags)}" if flags else "")
-                    + f"\n      sizes: {', '.join(listing.sizes) or 'n/a'}\n      {listing.url}"
-                )
+                    # The quoted price is this seller's lowest ask in some other
+                    # size — say so, or the citation list reads as a better deal.
+                    notes.append(f"no US {spec.size}; price shown is their lowest ask")
+                if listing.condition != "new":
+                    notes.append(listing.condition)
+                citations.append(Citation(n=n, source_name=listing.source_name, url=listing.url,
+                                          price=listing.total_for(spec.size),
+                                          currency=listing.currency, note=", ".join(notes)))
+                lines.append(f"  [{n}] {describe_listing(listing, spec)}")
+                lines.append(f"      sizes: {', '.join(listing.sizes) or 'n/a'}")
+                lines.append(f"      {listing.url}")
             lines.append("")
         return "\n".join(lines).strip(), citations
 
@@ -378,96 +395,152 @@ class SneakerAgent:
 
 
 # --------------------------------------------------------------------------
+# Rendering helpers
+# --------------------------------------------------------------------------
+
+def _msrp(product: Product) -> float | None:
+    """Best available MSRP for a product: the brand store price, else a
+    retailer's "was" price."""
+    for listing in product.listings:
+        if listing.source_kind == "brand" and not listing.discount_pct:
+            return listing.price
+    quoted = [l.list_price for l in product.listings if l.list_price]
+    return max(quoted) if quoted else None
+
+
+def price_note(listing: Listing, spec: QuerySpec) -> str:
+    """'$165.00 for a US 10.5' vs '$130.00' — size-aware price phrasing."""
+    price = listing.price_for(spec.size)
+    text = fmt_money(price, listing.currency)
+    if spec.size and listing.size_prices:
+        text += f" for a US {spec.size}"
+    elif listing.size_prices:
+        text += " lowest ask"
+    return text
+
+
+def describe_listing(listing: Listing, spec: QuerySpec) -> str:
+    """One line covering price, extras, condition and any failed constraint."""
+    parts = []
+    if listing.shipping == 0:
+        parts.append("free shipping")
+    elif listing.shipping:
+        parts.append(f"+{fmt_money(listing.shipping, listing.currency)} shipping")
+    else:
+        parts.append("shipping unknown")
+    if listing.fees:
+        parts.append(f"+{fmt_money(listing.fees, listing.currency)} fees")
+
+    flags = []
+    if not listing.in_stock:
+        flags.append("OUT OF STOCK")
+    if spec.size and not listing.has_size(spec.size):
+        flags.append(f"size {spec.size} unavailable")
+    if listing.condition != "new":
+        flags.append(listing.condition)
+    discount = listing.discount_pct_for(spec.size)
+    premium = listing.premium_pct_for(spec.size)
+    if discount:
+        flags.append(f"{discount:g}% off {fmt_money(listing.list_price, listing.currency)}")
+    elif premium:
+        flags.append(f"{premium:g}% above the {fmt_money(listing.list_price, listing.currency)} MSRP")
+
+    return (f"{listing.source_name}: {price_note(listing, spec)}"
+            f" ({'; '.join(parts)}; delivered "
+            f"{fmt_money(listing.total_for(spec.size), listing.currency)})"
+            + (f" — {', '.join(flags)}" if flags else ""))
+
+
+# --------------------------------------------------------------------------
 # Deterministic answer writer (used whenever Claude is unavailable)
 # --------------------------------------------------------------------------
 
 def render_template_answer(question: str, spec: QuerySpec, products: Sequence[Product],
                            citations: Sequence[Citation]) -> str:
+    """The offline answer writer: same evidence, no model in the loop."""
     by_url = {c.url: c for c in citations}
+    where = f" in a US {spec.size}" if spec.size else ""
     out: list[str] = []
-    for product in products:
-        offers = product.offers(size=spec.size, in_stock_only=spec.in_stock_only,
-                                include_shipping=spec.include_shipping)
-        if spec.max_price is not None:
-            affordable = [o for o in offers
-                          if (o.total_price if spec.include_shipping else o.price) <= spec.max_price]
-        else:
-            affordable = offers
 
+    def cite(listing: Listing) -> str:
+        found = by_url.get(listing.url)
+        return f" [{found.n}]" if found else ""
+
+    for product in products:
         title = product.display_name
         if product.style_code:
             title += f" (style {product.style_code})"
+        msrp = _msrp(product)
+        if msrp:
+            title += f" — MSRP {fmt_money(msrp)}"
         out.append(title)
 
+        if not product.at_retail and product.has_resale_listings:
+            out.append("  Sold out at the brand store — the listings below are resale asks.")
+
+        offers = product.offers(size=spec.size, in_stock_only=spec.in_stock_only,
+                                condition=spec.condition,
+                                include_shipping=spec.include_shipping)
         if not offers:
-            reason = []
-            if spec.size:
-                reason.append(f"size {spec.size}")
-            if spec.in_stock_only:
-                reason.append("in stock")
-            out.append(f"  No listing matches {' and '.join(reason) or 'those constraints'} "
+            wanted = [x for x in (f"size {spec.size}" if spec.size else "",
+                                  "in stock" if spec.in_stock_only else "",
+                                  spec.condition) if x]
+            out.append(f"  No listing matches {' and '.join(wanted) or 'those constraints'} "
                        f"across the {len({l.source for l in product.listings})} sites checked.")
             out.append("")
             continue
 
+        if spec.max_price is not None:
+            affordable = [o for o in offers
+                          if (o.total_for(spec.size) if spec.include_shipping
+                              else o.price_for(spec.size)) <= spec.max_price]
+        else:
+            affordable = offers
+
         if not affordable:
             cheapest = offers[0]
-            cite = by_url.get(cheapest.url)
-            out.append(f"  Nothing under {fmt_money(spec.max_price)}. Cheapest available is "
-                       f"{cheapest.source_name} at {fmt_money(cheapest.total_price, cheapest.currency)} "
-                       f"delivered{f' {cite.n and chr(91)}{cite.n}{chr(93)}' if cite else ''}.")
+            out.append(f"  Nothing{where} under {fmt_money(spec.max_price)}. Cheapest is "
+                       f"{describe_listing(cheapest, spec)}{cite(cheapest)}")
+            out.append(f"  {cheapest.url}")
             out.append("")
             continue
 
         best = affordable[0]
-        cite = by_url.get(best.url)
-        marker = f" [{cite.n}]" if cite else ""
-        why = []
-        if best.discount_pct:
-            why.append(f"{best.discount_pct:g}% off {fmt_money(best.list_price, best.currency)}")
-        if best.shipping == 0:
-            why.append("free shipping")
-        elif best.shipping:
-            why.append(f"{fmt_money(best.shipping, best.currency)} shipping included")
-        out.append(f"  Cheapest: {best.source_name} — {fmt_money(best.price, best.currency)}"
-                   + (f" ({fmt_money(best.total_price, best.currency)} delivered)"
-                      if best.shipping else "")
-                   + (f" — {', '.join(why)}" if why else "") + marker)
+        out.append(f"  Cheapest{where}: {describe_listing(best, spec)}{cite(best)}")
         out.append(f"  {best.url}")
 
-        savings = round(offers[-1].total_price - best.total_price, 2)
-        if savings > 0:
-            out.append(f"  Saves {fmt_money(savings)} vs the most expensive of "
-                       f"{len(offers)} listings checked.")
+        saving = round(offers[-1].total_for(spec.size) - best.total_for(spec.size), 2)
+        if saving > 0:
+            out.append(f"  Saves {fmt_money(saving)} vs the priciest of the "
+                       f"{len(offers)} listings compared.")
 
         for other in offers[1:]:
-            c = by_url.get(other.url)
-            flag = "" if other.in_stock else " (out of stock)"
-            out.append(f"    - {other.source_name}: {fmt_money(other.price, other.currency)}"
-                       f" / {fmt_money(other.total_price, other.currency)} delivered{flag}"
-                       + (f" [{c.n}]" if c else ""))
+            out.append(f"    - {describe_listing(other, spec)}{cite(other)}")
 
-        # Say why a retailer is missing from the table rather than leaving a
-        # gap in the citation numbering.
+        # Explain the gaps in the citation numbering rather than leaving them.
         qualifying = {l.listing_id for l in offers}
         for skipped in product.listings:
             if skipped.listing_id in qualifying:
                 continue
-            c = by_url.get(skipped.url)
             reasons = []
             if not skipped.in_stock:
                 reasons.append("out of stock")
             if spec.size and not skipped.has_size(spec.size):
                 reasons.append(f"no size {spec.size}")
-            out.append(f"    - excluded {skipped.source_name}: "
-                       f"{fmt_money(skipped.price, skipped.currency)}"
-                       f" ({', '.join(reasons) or 'filtered out'})"
-                       + (f" [{c.n}]" if c else ""))
+            if spec.condition and skipped.condition != spec.condition:
+                reasons.append(f"{skipped.condition}, not {spec.condition}")
+            out.append(f"    - excluded {skipped.source_name} "
+                       f"({', '.join(reasons) or 'filtered out'}){cite(skipped)}")
         out.append("")
 
+    footers = []
     if spec.size:
-        out.append(f"Size filter: US {spec.size}.")
+        footers.append(f"Size filter: US {spec.size}")
+    if spec.condition:
+        footers.append(f"condition: {spec.condition}")
     if spec.max_price is not None:
-        out.append(f"Budget filter: {fmt_money(spec.max_price)}"
-                   f"{' delivered' if spec.include_shipping else ' before shipping'}.")
+        footers.append(f"budget: {fmt_money(spec.max_price)}"
+                       f"{' delivered' if spec.include_shipping else ' before shipping and fees'}")
+    if footers:
+        out.append(". ".join(footers) + ".")
     return "\n".join(out).strip()

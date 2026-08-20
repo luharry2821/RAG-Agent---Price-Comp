@@ -21,6 +21,7 @@ CREATE TABLE IF NOT EXISTS listings (
     listing_id   TEXT PRIMARY KEY,
     source       TEXT NOT NULL,
     source_name  TEXT NOT NULL,
+    source_kind  TEXT,
     url          TEXT NOT NULL,
     title        TEXT NOT NULL,
     brand        TEXT,
@@ -32,8 +33,10 @@ CREATE TABLE IF NOT EXISTS listings (
     list_price   REAL,
     currency     TEXT,
     shipping     REAL,
+    fees         REAL,
     in_stock     INTEGER,
     sizes        TEXT,
+    size_prices  TEXT,
     gender       TEXT,
     condition    TEXT,
     image        TEXT,
@@ -63,10 +66,10 @@ CREATE TABLE IF NOT EXISTS meta (
 
 DEFAULT_DB = Path("data/catalog.db")
 _COLUMNS = [
-    "listing_id", "source", "source_name", "url", "title", "brand", "model",
-    "colorway", "style_code", "retailer_sku", "price", "list_price", "currency",
-    "shipping", "in_stock", "sizes", "gender", "condition", "image",
-    "scraped_at", "raw", "vector",
+    "listing_id", "source", "source_name", "source_kind", "url", "title", "brand",
+    "model", "colorway", "style_code", "retailer_sku", "price", "list_price",
+    "currency", "shipping", "fees", "in_stock", "sizes", "size_prices", "gender",
+    "condition", "image", "scraped_at", "raw", "vector",
 ]
 
 
@@ -81,7 +84,16 @@ class Catalog:
         self._lock = threading.RLock()
         with self._lock, closing(self.conn.cursor()) as cur:
             cur.executescript(SCHEMA)
+            self._migrate(cur)
         self.conn.commit()
+
+    @staticmethod
+    def _migrate(cur: sqlite3.Cursor) -> None:
+        """Add columns introduced after a catalogue was first created."""
+        existing = {row["name"] for row in cur.execute("PRAGMA table_info(listings)")}
+        for column, ddl in (("source_kind", "TEXT"), ("fees", "REAL"), ("size_prices", "TEXT")):
+            if column not in existing:
+                cur.execute(f"ALTER TABLE listings ADD COLUMN {column} {ddl}")
 
     def close(self) -> None:
         self.conn.close()
@@ -115,11 +127,13 @@ class Catalog:
                         stats["price_changed"] += 1
 
                 values = (
-                    listing.listing_id, listing.source, listing.source_name, listing.url,
-                    listing.title, listing.brand, listing.model, listing.colorway,
-                    listing.style_code, listing.retailer_sku, listing.price, listing.list_price,
-                    listing.currency, listing.shipping, int(listing.in_stock),
-                    json.dumps(listing.sizes), listing.gender, listing.condition, listing.image,
+                    listing.listing_id, listing.source, listing.source_name,
+                    listing.source_kind, listing.url, listing.title, listing.brand,
+                    listing.model, listing.colorway, listing.style_code,
+                    listing.retailer_sku, listing.price, listing.list_price,
+                    listing.currency, listing.shipping, listing.fees, int(listing.in_stock),
+                    json.dumps(listing.sizes), json.dumps(listing.size_prices),
+                    listing.gender, listing.condition, listing.image,
                     listing.scraped_at, json.dumps(listing.raw, default=str),
                     json.dumps(list(vector)) if vector is not None else None,
                 )
@@ -145,11 +159,13 @@ class Catalog:
     def _row_to_listing(self, row: sqlite3.Row) -> Listing:
         return Listing(
             listing_id=row["listing_id"], source=row["source"], source_name=row["source_name"],
+            source_kind=row["source_kind"] or "retail",
             url=row["url"], title=row["title"], brand=row["brand"] or "", model=row["model"] or "",
             colorway=row["colorway"] or "", style_code=row["style_code"] or "",
             retailer_sku=row["retailer_sku"] or "", price=row["price"], list_price=row["list_price"],
-            currency=row["currency"] or "USD", shipping=row["shipping"],
+            currency=row["currency"] or "USD", shipping=row["shipping"], fees=row["fees"],
             in_stock=bool(row["in_stock"]), sizes=json.loads(row["sizes"] or "[]"),
+            size_prices={k: float(v) for k, v in json.loads(row["size_prices"] or "{}").items()},
             gender=row["gender"] or "", condition=row["condition"] or "new", image=row["image"] or "",
             scraped_at=row["scraped_at"] or "", raw=json.loads(row["raw"] or "{}"),
         )

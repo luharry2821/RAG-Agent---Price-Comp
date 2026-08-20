@@ -23,6 +23,10 @@ _META_RE = re.compile(
 
 IN_STOCK_TOKENS = ("instock", "in_stock", "limitedavailability", "onlineonly", "preorder")
 
+# "Size 10.5", "US M 10.5", "10.5" — how marketplaces label a per-size offer.
+_SIZE_LABEL = re.compile(r"(?:size\s*)?(?:us\s*)?(?:[mw]\s*)?(\d{1,2}(?:\.5)?)\b", re.I)
+_USED_TOKENS = ("used", "pre-owned", "preowned", "refurbished", "worn")
+
 
 def iter_jsonld(html: str) -> Iterator[Any]:
     for match in _SCRIPT_RE.finditer(html or ""):
@@ -66,6 +70,44 @@ def find_products(html: str) -> list[dict]:
     return products
 
 
+def _offers(node: dict) -> list[dict]:
+    """Every Offer under a Product, including AggregateOffer children."""
+    offers = node.get("offers")
+    found: list[dict] = []
+    for item in _walk(offers) if offers is not None else []:
+        if isinstance(item, dict) and ("price" in item or "lowPrice" in item):
+            found.append(item)
+    return found
+
+
+def _offer_size(offer: dict) -> str:
+    """Pull the size label off a per-size offer, if it carries one."""
+    for key in ("name", "sku", "description", "gtin", "serialNumber"):
+        raw = _text(offer.get(key))
+        if not raw:
+            continue
+        if not re.search(r"\d", raw):
+            continue
+        if "size" not in raw.lower() and not re.fullmatch(r"[\s\w./-]{0,12}", raw):
+            continue
+        match = _SIZE_LABEL.search(raw)
+        if match:
+            value = float(match.group(1))
+            if 1 <= value <= 20:            # plausible US shoe size
+                return f"{value:g}"
+    item = offer.get("itemOffered")
+    if isinstance(item, dict):
+        return _offer_size(item)
+    return ""
+
+
+def _offer_price(offer: dict) -> float | None:
+    try:
+        return float(str(offer.get("price") or offer.get("lowPrice")).replace(",", ""))
+    except (TypeError, ValueError):
+        return None
+
+
 def _first_offer(node: dict) -> dict:
     offers = node.get("offers")
     candidates: list[dict] = []
@@ -92,8 +134,19 @@ def _text(value: Any) -> str:
 
 
 def parse_product(node: dict) -> dict:
-    """Flatten a schema.org Product node into listing-shaped fields."""
+    """Flatten a schema.org Product node into listing-shaped fields.
+
+    Resale marketplaces publish one Offer per size; those become ``size_prices``
+    so the agent can answer "cheapest in a 10.5" rather than "cheapest in the
+    cheapest size the seller happens to have".
+    """
     offer = _first_offer(node)
+    size_prices: dict[str, float] = {}
+    for candidate in _offers(node):
+        size = _offer_size(candidate)
+        price = _offer_price(candidate)
+        if size and price is not None:
+            size_prices[size] = min(price, size_prices.get(size, price))
     availability = _text(offer.get("availability")).lower().replace("http://schema.org/", "")
     sizes: list[str] = []
     for item in _walk(node):
@@ -103,6 +156,9 @@ def parse_product(node: dict) -> dict:
                 sizes.extend(str(v) for v in value)
             elif value:
                 sizes.append(str(value))
+    blob = " ".join(_text(node.get(k)) for k in ("itemCondition", "description", "name")).lower()
+    condition = "used" if any(token in blob for token in _USED_TOKENS) else "new"
+
     return {
         "title": _text(node.get("name")),
         "brand": _text(node.get("brand")),
@@ -111,13 +167,18 @@ def parse_product(node: dict) -> dict:
         "colorway": _text(node.get("color")),
         "gender": _text(node.get("audience") or node.get("gender")),
         "image": _text(node.get("image")),
-        "url": _text(offer.get("url") or node.get("url")),
+        # The cheapest offer often omits the URL; fall back to the product node
+        # and then to any sibling offer that carries one.
+        "url": (_text(offer.get("url")) or _text(node.get("url"))
+                or next((u for u in (_text(o.get("url")) for o in _offers(node)) if u), "")),
         "price": offer.get("price") or offer.get("lowPrice"),
         "list_price": (offer.get("priceSpecification") or {}).get("price")
         if isinstance(offer.get("priceSpecification"), dict) else None,
         "currency": _text(offer.get("priceCurrency")) or "USD",
         "in_stock": any(token in availability for token in IN_STOCK_TOKENS) if availability else True,
-        "sizes": sizes,
+        "sizes": sizes or sorted(size_prices, key=float),
+        "size_prices": size_prices,
+        "condition": condition,
         "description": _text(node.get("description"))[:400],
     }
 

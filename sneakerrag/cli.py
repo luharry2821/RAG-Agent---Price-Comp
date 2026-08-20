@@ -30,7 +30,7 @@ def _color(enabled: bool):
 def cmd_sources(args: argparse.Namespace) -> int:
     for spec in SITES:
         brands = ", ".join(spec.brands) if spec.brands else "nike, adidas, new balance"
-        print(f"{spec.key:22} {spec.name:26} {brands}")
+        print(f"{spec.key:16} {spec.kind:7} {spec.name:16} {brands}")
         if args.verbose:
             print(f"{'':22} {spec.home}\n{'':22} {spec.notes}")
     return 0
@@ -62,37 +62,60 @@ def _print_products(products, spec, verbose: bool, use_color: bool) -> None:
         if product.style_code:
             header += f"  [{product.style_code}]"
         print(f"\n{bold}{header}{reset}")
+        if not product.at_retail and product.has_resale_listings:
+            print(f"  {yellow}sold out at the brand store — resale asks only{reset}")
+        if spec.size:
+            print(f"  {dim}prices shown for US {spec.size}{reset}")
+
         offers = product.offers(size=spec.size, in_stock_only=spec.in_stock_only,
+                                condition=spec.condition,
                                 include_shipping=spec.include_shipping)
         excluded = {l.listing_id for l in product.listings} - {l.listing_id for l in offers}
         if not offers:
-            print(f"  {yellow}no listing matches the requested size/stock filters{reset}")
+            print(f"  {yellow}no listing matches the requested size/stock/condition filters{reset}")
         for rank, listing in enumerate(offers):
             marker = f"{green}CHEAPEST{reset}" if rank == 0 else "        "
-            ship = ("free ship" if listing.shipping == 0 else
-                    f"+{fmt_money(listing.shipping, listing.currency)}" if listing.shipping else "ship n/a")
-            promo = f"  {listing.discount_pct:g}% off" if listing.discount_pct else ""
-            print(f"  {marker} {listing.source_name:26} {fmt_money(listing.price, listing.currency):>10}"
-                  f"  {ship:>10}  = {fmt_money(listing.total_price, listing.currency):>10}{promo}")
+            extras = (f"+{fmt_money(listing.extras, listing.currency)}" if listing.extras
+                      else "free")
+            tags = []
+            if listing.condition != "new":
+                tags.append(listing.condition)
+            discount = listing.discount_pct_for(spec.size)
+            premium = listing.premium_pct_for(spec.size)
+            if discount:
+                tags.append(f"{discount:g}% off")
+            elif premium:
+                tags.append(f"+{premium:g}% vs MSRP")
+            print(f"  {marker} {listing.source_name:16}"
+                  f" {fmt_money(listing.price_for(spec.size), listing.currency):>10}"
+                  f"  {extras:>8} ship/fees  = "
+                  f"{fmt_money(listing.total_for(spec.size), listing.currency):>10}"
+                  f"  {dim}{', '.join(tags)}{reset}")
             if verbose:
                 print(f"           {dim}{listing.url}{reset}")
                 print(f"           {dim}sizes: {', '.join(listing.sizes) or 'n/a'}{reset}")
         if offers:
-            saving = round(offers[-1].total_price - offers[0].total_price, 2)
+            saving = round(offers[-1].total_for(spec.size) - offers[0].total_for(spec.size), 2)
             if saving > 0:
-                print(f"  {dim}spread across {len(offers)} sites: {fmt_money(saving)}{reset}")
+                print(f"  {dim}spread across {len(offers)} sellers: {fmt_money(saving)}{reset}")
         for listing_id in excluded:
             listing = next(l for l in product.listings if l.listing_id == listing_id)
-            why = "out of stock" if not listing.in_stock else f"no size {spec.size}"
-            print(f"  {dim}excluded {listing.source_name} ({why}) "
-                  f"{fmt_money(listing.price, listing.currency)}{reset}")
+            why = ("out of stock" if not listing.in_stock
+                   else f"no size {spec.size}" if spec.size and not listing.has_size(spec.size)
+                   else f"{listing.condition}, not {spec.condition}")
+            print(f"  {dim}excluded {listing.source_name} ({why}){reset}")
 
 
 def cmd_compare(args: argparse.Namespace) -> int:
     query = " ".join(args.query)
     with Catalog(args.db) as catalog:
         agent = SneakerAgent(catalog=catalog, use_llm=False)
-        spec, products = agent.compare(query, limit=args.limit)
+        spec = agent.understand(query)
+        if args.size:
+            spec.size = args.size
+        if args.condition:
+            spec.condition = args.condition
+        spec, products = agent.compare(query, spec=spec, limit=args.limit)
     if args.json:
         print(json.dumps({"query": query, "spec": spec.to_dict(),
                           "products": [p.to_dict() for p in products]}, indent=2, default=str))
@@ -131,9 +154,16 @@ def cmd_product(args: argparse.Namespace) -> int:
         product = cluster_listings(listings)[0]
         print(f"{product.display_name}  [{product.style_code}]")
         for listing in product.offers(in_stock_only=False):
-            print(f"  {listing.source_name:26} {fmt_money(listing.price, listing.currency):>10}"
+            label = "from" if listing.size_prices else "    "
+            print(f"  {listing.source_name:16} {label} "
+                  f"{fmt_money(listing.price, listing.currency):>10}"
                   f"  delivered {fmt_money(listing.total_price, listing.currency):>10}"
+                  f"  {listing.condition:4}"
                   f"  {'in stock' if listing.in_stock else 'OUT OF STOCK'}")
+            if listing.size_prices:
+                curve = "  ".join(f"{size}:{price:g}" for size, price
+                                  in sorted(listing.size_prices.items(), key=lambda kv: float(kv[0])))
+                print(f"    asks by size: {curve}")
             print(f"    {listing.url}")
             history = catalog.price_history(listing.listing_id)
             if len(history) > 1:
@@ -206,6 +236,8 @@ def build_parser() -> argparse.ArgumentParser:
 
     p = sub.add_parser("compare", help="price table for a shoe across sites")
     p.add_argument("query", nargs="+")
+    p.add_argument("--size", default="", help="US size (resale prices are per size)")
+    p.add_argument("--condition", default="", choices=["", "new", "used"])
     p.add_argument("--limit", type=int, default=3)
     p.add_argument("-v", "--verbose", action="store_true")
     p.add_argument("--json", action="store_true")
