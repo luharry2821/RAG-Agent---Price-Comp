@@ -369,8 +369,8 @@ class SneakerAgent:
             lines.append("")
         return "\n".join(lines).strip(), citations
 
-    def answer(self, question: str, limit: int = 3) -> Answer:
-        spec, products = self.compare(question, limit=limit)
+    def answer(self, question: str, limit: int = 3, spec: QuerySpec | None = None) -> Answer:
+        spec, products = self.compare(question, spec=spec, limit=limit)
         if not products:
             return Answer(question=question, spec=spec, generator="template",
                           text=("No listings matched that. The catalogue currently covers "

@@ -85,6 +85,39 @@ class TestCli(unittest.TestCase):
         self.assertEqual(code, 0)
         self.assertIn("%", out)
 
+    def test_chat_answers_and_keeps_sticky_filters(self):
+        import builtins
+        script = iter(["panda dunks", ":size 13", "dunk low", ":filters", ":quit"])
+        original = builtins.input
+        builtins.input = lambda *a, **k: next(script)
+        try:
+            code, out = self.invoke("chat", "--no-llm", "--no-color", "--limit", "1")
+        finally:
+            builtins.input = original
+        self.assertEqual(code, 0)
+        self.assertIn("Dunk Low Retro", out)
+        self.assertIn("Cheapest in a US 13", out)      # the size stuck
+        self.assertIn("size=13", out)
+
+    def test_chat_reports_unknown_commands_and_exits_on_eof(self):
+        import builtins
+        script = iter([":nonsense", ":help"])
+
+        def fake_input(*a, **k):
+            try:
+                return next(script)
+            except StopIteration:
+                raise EOFError
+        original = builtins.input
+        builtins.input = fake_input
+        try:
+            code, out = self.invoke("chat", "--no-llm", "--no-color")
+        finally:
+            builtins.input = original
+        self.assertEqual(code, 0)
+        self.assertIn("unknown command", out)
+        self.assertIn(":size", out)
+
     def test_reingest_is_idempotent(self):
         _, before = self.invoke("stats")
         self.invoke("ingest")

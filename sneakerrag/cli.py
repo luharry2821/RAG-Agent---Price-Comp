@@ -10,7 +10,7 @@ from pathlib import Path
 from .agent import SneakerAgent
 from .matching import cluster_listings
 from .models import fmt_money
-from .normalize import normalize_style_code
+from .normalize import normalize_brand, normalize_style_code
 from .sources import SITES, get_sources
 from .store import Catalog, DEFAULT_DB
 
@@ -206,6 +206,104 @@ def cmd_stats(args: argparse.Namespace) -> int:
     return 0
 
 
+CHAT_HELP = """Type a shoe and press enter — "air max 90", "panda dunks in a 10.5",
+"cheapest 990v6 under $180". Filters you set stick until you change them.
+
+  :size 10.5      only listings with that size (blank to clear)
+  :condition new  new | used | any
+  :brand nike     nike | adidas | new balance (blank to clear)
+  :shipping off   rank on the ask instead of the delivered price
+  :limit 3        how many products to show
+  :filters        what is currently set
+  :sites          the sites in the catalogue
+  :stats          catalogue summary
+  :help  :quit"""
+
+
+def cmd_chat(args: argparse.Namespace) -> int:
+    """Interactive shell — the index is built once and reused for every query."""
+    bold, dim, green, yellow, reset = _color(not args.no_color)
+    with Catalog(args.db) as catalog:
+        agent = SneakerAgent(catalog=catalog, use_llm=not args.no_llm)
+        if not len(agent.index):
+            print(f"{yellow}The catalogue is empty — run `sneakerrag ingest` first.{reset}")
+            return 1
+
+        engine = agent.llm.name if getattr(agent.llm, "available", False) else "offline template"
+        print(f"{bold}sneakerrag{reset} — {len(agent.index)} listings across "
+              f"{len({l.source for l in catalog.listings()})} sites, answers by {engine}")
+        print(f"{dim}Prices come from the bundled sample data unless you have run "
+              f"`ingest --live`.{reset}")
+        print(f"{dim}Type :help for commands, :quit to exit.{reset}")
+
+        sticky = {"size": args.size, "condition": "", "brands": [], "include_shipping": True}
+        limit = args.limit
+
+        while True:
+            try:
+                line = input(f"\n{green}shoe>{reset} ").strip()
+            except (EOFError, KeyboardInterrupt):
+                print()
+                return 0
+            if not line:
+                continue
+
+            if line.startswith(":"):
+                command, _, value = line[1:].partition(" ")
+                command, value = command.lower(), value.strip()
+                if command in ("q", "quit", "exit"):
+                    return 0
+                if command in ("h", "help", "?"):
+                    print(CHAT_HELP)
+                elif command == "size":
+                    sticky["size"] = value
+                    print(f"{dim}size: {value or 'any'}{reset}")
+                elif command == "condition":
+                    sticky["condition"] = "" if value in ("", "any") else value
+                    print(f"{dim}condition: {sticky['condition'] or 'any'}{reset}")
+                elif command == "brand":
+                    brand = normalize_brand(value)
+                    sticky["brands"] = [brand] if brand else []
+                    print(f"{dim}brand: {brand or 'any'}{reset}")
+                elif command == "shipping":
+                    sticky["include_shipping"] = value not in ("off", "no", "false")
+                    print(f"{dim}ranking on {'delivered price' if sticky['include_shipping'] else 'the ask'}{reset}")
+                elif command == "limit" and value.isdigit():
+                    limit = max(1, int(value))
+                    print(f"{dim}showing up to {limit} products{reset}")
+                elif command == "filters":
+                    print(f"{dim}size={sticky['size'] or 'any'} "
+                          f"condition={sticky['condition'] or 'any'} "
+                          f"brand={', '.join(sticky['brands']) or 'any'} "
+                          f"shipping={'included' if sticky['include_shipping'] else 'excluded'} "
+                          f"limit={limit}{reset}")
+                elif command == "sites":
+                    cmd_sources(argparse.Namespace(verbose=False))
+                elif command == "stats":
+                    print(json.dumps(catalog.stats(), indent=2))
+                else:
+                    print(f"{yellow}unknown command {line!r} — try :help{reset}")
+                continue
+
+            spec = agent.understand(line)
+            # Sticky filters win: the shopper set them deliberately.
+            if sticky["size"]:
+                spec.size = sticky["size"]
+            if sticky["condition"]:
+                spec.condition = sticky["condition"]
+            if sticky["brands"]:
+                spec.brands = list(sticky["brands"])
+            spec.include_shipping = sticky["include_shipping"]
+
+            answer = agent.answer(line, limit=limit, spec=spec)
+            print()
+            print(answer.text)
+            if answer.citations:
+                print(f"\n{dim}Sources{reset}")
+                for citation in answer.citations:
+                    print(f"  {dim}{citation.render()}{reset}")
+
+
 def cmd_serve(args: argparse.Namespace) -> int:
     from .api import serve
     serve(host=args.host, port=args.port, db_path=args.db, use_llm=not args.no_llm)
@@ -263,6 +361,13 @@ def build_parser() -> argparse.ArgumentParser:
 
     p = sub.add_parser("stats", help="catalogue summary")
     p.set_defaults(func=cmd_stats)
+
+    p = sub.add_parser("chat", help="interactive shell — type a shoe, get the cheapest site")
+    p.add_argument("--size", default="", help="starting size filter")
+    p.add_argument("--limit", type=int, default=2)
+    p.add_argument("--no-llm", action="store_true")
+    p.add_argument("--no-color", action="store_true")
+    p.set_defaults(func=cmd_chat)
 
     p = sub.add_parser("serve", help="run the local JSON API")
     p.add_argument("--host", default="127.0.0.1")

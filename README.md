@@ -33,6 +33,7 @@ git clone https://github.com/luharry2821/RAG-Agent---Price-Comp.git
 cd RAG-Agent---Price-Comp
 
 python3 -m sneakerrag ingest                            # load the bundled sample catalogue
+python3 -m sneakerrag chat                              # interactive: type a shoe, get the cheapest site
 python3 -m sneakerrag compare "samba og" --size 9 -v    # price table for one size
 python3 -m sneakerrag ask "cheapest 990v6 in a 10 under \$200"
 python3 -m sneakerrag product DD1391-100                # every seller + the ask curve
@@ -42,6 +43,36 @@ python3 -m sneakerrag serve                             # JSON API on :8000
 
 Install it as a command (`sneakerrag …`) with `pip install -e .`, and add
 `pip install -e ".[claude]"` for Claude-written answers.
+
+## Talking to it
+
+`chat` is the quickest way in. Type a shoe; filters you set stick until you change them,
+and the index is built once so follow-up questions are instant.
+
+```console
+$ sneakerrag chat
+sneakerrag — 47 listings across 7 sites, answers by offline template
+
+shoe> panda dunks
+Nike Dunk Low Retro — White / Black (style DD1391-100) — MSRP $120.00
+  Sold out at the brand store — the listings below are resale asks.
+  Cheapest: KicksCrew: $144.08 lowest ask (free shipping) — 20.1% above the $120.00 MSRP [1]
+  …
+
+shoe> :size 13
+size: 13
+
+shoe> dunk low
+  Cheapest in a US 13: KicksCrew: $144.08 for a US 13 …
+    - excluded GOAT (no size 13) [3]
+```
+
+`:help` lists the commands (`:size`, `:condition`, `:brand`, `:shipping`, `:limit`,
+`:filters`, `:sites`, `:stats`). One-shot equivalents are `ask` (prose answer) and `compare`
+(price table); `serve` exposes the same thing over HTTP.
+
+**Prices come from the bundled sample data.** Until you run `ingest --live` against a real
+source, every number you see is synthetic — the pipeline is real, the prices are invented.
 
 ## The sites
 
