@@ -211,7 +211,7 @@ def parse_title(title: str, brand_hint: str = "") -> dict[str, str]:
     }
 
 
-_COLOR_WORDS = {
+COLOR_WORDS = {
     "white", "black", "grey", "gray", "red", "blue", "green", "yellow", "pink",
     "purple", "orange", "brown", "beige", "cream", "navy", "olive", "sail",
     "gum", "silver", "gold", "bone", "sand", "teal", "burgundy", "maroon",
@@ -225,7 +225,7 @@ def _looks_like_colorway(text: str) -> bool:
     if not t:
         return False
     tokens = set(re.split(r"[\s/]+", t))
-    if tokens & _COLOR_WORDS:
+    if tokens & COLOR_WORDS:
         return True
     return "/" in t and len(t) <= 40
 
@@ -242,7 +242,7 @@ def _split_trailing_colorway(model: str) -> tuple[str, str]:
     while tokens:
         token = tokens[-1]
         pieces = [p for p in token.split("/") if p]
-        if pieces and all(p in _COLOR_WORDS for p in pieces):
+        if pieces and all(p in COLOR_WORDS for p in pieces):
             tail.insert(0, tokens.pop())
         else:
             break

@@ -32,11 +32,12 @@ from .aliases import (
     expand_query,
     meaningful_tokens,
     similarity,
+    term_sources,
     trigrams,
 )
 from .embeddings import Embedder, cosine, get_embedder
 from .models import Listing, QuerySpec
-from .normalize import normalize_style_code, squash
+from .normalize import COLOR_WORDS, normalize_style_code, squash
 
 try:  # optional: turns the cosine pass into one matrix multiply
     import numpy as _np
@@ -54,8 +55,22 @@ CODE_BOOST = 1.0         # an exact style-code hit outranks everything else
 # ("asics gel kayano 31") still returns its nearest neighbour, and the agent
 # then prices a shoe nobody asked about — a fluent answer about the wrong
 # product, which is worse than no answer.
-MIN_TERM_COVERAGE = 0.4  # share of query terms a listing must match ...
-MIN_VECTOR = 0.35        # ... unless it is strongly similar overall
+MIN_TERM_COVERAGE = 0.4  # share of typed words a listing must satisfy ...
+HIGH_COVERAGE = 0.8      # ... or nearly all of them, which stands on its own
+MIN_VECTOR = 0.55        # ... unless it is very similar overall
+
+# Words that describe a shoe without identifying one. Matching only these is
+# not evidence: every catalogue has something black, low and retro, so a query
+# for a shoe we do not carry would otherwise always find a "close enough" one.
+GENERIC_TERMS = COLOR_WORDS | {
+    "og", "low", "mid", "high", "retro", "classic", "vintage", "premium",
+    "new", "edition", "grade", "school", "big", "little", "men", "mens",
+    "women", "womens", "unisex", "kids", "deadstock", "used",
+    # Brands are a hard filter, not an identity: "New Balance 2002R" matching a
+    # 990v6 on the words "new balance" is the same mistake as matching on
+    # "black". The model is what identifies the shoe.
+    "nike", "adidas", "jordan", "balance", "nb",
+}
 
 # Two-stage retrieval: BM25 is a cheap first pass, and only its best candidates
 # are worth the cosine and fusion work. Bounds query cost by the depth rather
@@ -77,8 +92,22 @@ FIELD_WEIGHTS: dict[str, float] = {
 }
 
 
+_VARIANT = re.compile(r"^(\d{2,4})(v\d{1,2})$")
+VARIANT_WEIGHT = 0.5     # a sub-token is weaker evidence than the whole word
+
+
 def tokenize(text: str) -> list[str]:
     return [t for t in re.split(r"[^a-z0-9.]+", squash(text)) if t]
+
+
+def variants(token: str) -> list[str]:
+    """Sub-tokens a shopper might type instead of the full model name.
+
+    "990v6" is one token, so a search for "990" would otherwise miss it
+    entirely — and "990" is what people actually type.
+    """
+    match = _VARIANT.match(token)
+    return [match.group(1), match.group(2)] if match else []
 
 
 @dataclass
@@ -147,6 +176,8 @@ class VectorIndex:
             tokens = tokenize(text)
             for token in tokens:
                 freqs[token] = freqs.get(token, 0.0) + weight
+                for part in variants(token):
+                    freqs[part] = freqs.get(part, 0.0) + weight * VARIANT_WEIGHT
             length += weight * len(tokens)
         return freqs, length
 
@@ -322,11 +353,28 @@ class VectorIndex:
 
     @staticmethod
     def _relevant(doc: int, matched: dict[int, set[str]], vector: dict[int, float],
-                  wanted: set[str]) -> bool:
+                  wanted: set[str], sources: dict[str, set[str]]) -> bool:
         """Is this listing plausibly what was asked for, or just the least-bad
-        thing in the catalogue?"""
-        coverage = len(matched.get(doc, ())) / len(wanted)
-        return coverage >= MIN_TERM_COVERAGE or vector.get(doc, 0.0) >= MIN_VECTOR
+        thing in the catalogue?
+
+        Two conditions, both required. Enough of the *typed* words must be
+        satisfied — credited back through any expansion, so a nickname cannot
+        vouch for itself — and at least one of them must actually identify a
+        shoe rather than describe one. Asking for an "Air Jordan 1 Retro High OG
+        Chicago" should not return a Dunk Low Retro on the strength of "retro"
+        plus the colours "Chicago" happens to expand to.
+        """
+        hit_terms = matched.get(doc, set())
+        satisfied = {source
+                     for term in hit_terms
+                     for source in sources.get(term, {term})} & wanted
+        coverage = len(satisfied) / len(wanted)
+        identifying = any(term not in GENERIC_TERMS for term in hit_terms)
+        # Either something identified the model, or essentially everything the
+        # shopper typed was found — a pure-colorway query ("silver sea salt new
+        # balance") is legitimate precisely because it matches in full.
+        strong = coverage >= HIGH_COVERAGE or (identifying and coverage >= MIN_TERM_COVERAGE)
+        return strong or vector.get(doc, 0.0) >= MIN_VECTOR
 
     @staticmethod
     def _ranks(scores: dict[int, float]) -> dict[int, int]:
@@ -367,12 +415,15 @@ class VectorIndex:
         # absent from the catalogue must score zero, not be judged on the one
         # word that happened to match.
         wanted = set(meaningful_tokens(query)) if self.expand else {t for t, _w in terms}
+        sources = term_sources(query) if self.expand else {}
         hits: list[Hit] = []
         for doc, score in fused.items():
-            if wanted and not self._relevant(doc, matched, vector, wanted):
-                continue
             listing = self.listings[doc]
             boost = CODE_BOOST if code and normalize_style_code(listing.style_code) == code else 0.0
+            # An exact style code is an identity, not evidence — it outranks the
+            # relevance floor rather than being judged by it.
+            if not boost and wanted and not self._relevant(doc, matched, vector, wanted, sources):
+                continue
             hits.append(Hit(listing=listing, score=round(score + boost, 6),
                             lexical=round(lexical.get(doc, 0.0), 4),
                             vector=round(vector.get(doc, 0.0), 4),

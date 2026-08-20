@@ -165,9 +165,15 @@ constraint is a predicate, not a nudge — and the budget checked against the pr
   so the default averages both — see the table below.
 - **A relevance floor.** Ask for an Asics and a nearest-neighbour search will hand back a
   Nike; the agent then fluently prices a shoe you never asked about, which is worse than no
-  answer. A listing must match a reasonable share of the typed words, or be strongly
-  similar overall, to be returned at all. Out-of-catalogue queries return nothing, and the
-  agent says so.
+  answer. To be returned at all, a listing must satisfy enough of the *typed* words —
+  credited back through any expansion, so a nickname cannot vouch for itself — and at least
+  one match must identify a model rather than describe one. Colours, cuts ("low", "retro",
+  "og") and brand names are descriptive: "Air Jordan 1 Retro High OG Chicago" must not
+  return a Dunk Low Retro on the strength of "retro" plus the colours "Chicago" expands to,
+  and "New Balance 2002R" must not return a 990v6 on the words "new balance". A query that
+  matches nearly everything typed passes regardless, so a pure-colorway search ("silver sea
+  salt new balance") still works. Out-of-catalogue queries return nothing, and the agent
+  says so.
 - **Two-stage, rare terms first.** BM25 is the cheap first pass and only its best candidates
   get the cosine and fusion work; within it, rare terms select candidates while common ones
   ("white", "low") merely refine the ranking rather than walking their whole posting list.
@@ -237,7 +243,8 @@ shapes change, so verify them against the live markup before trusting a live run
 
 `tools/benchmark.py` measures both, so improvements are demonstrated rather than asserted.
 Quality is scored on 34 real-shopper phrasings (nicknames, plurals, misspellings, colorway
-slang, style codes) plus 6 queries for shoes the catalogue does not carry, where the right
+slang, style codes) plus 9 queries for shoes the catalogue does not carry — including
+detailed ones like "Air Jordan 1 Retro High OG Chicago Lost & Found" — where the right
 answer is *no* answer.
 
 ```bash
@@ -250,8 +257,8 @@ vocabulary, no floor), on identical data:
 
 | | recall@1 | MRR | wrong-shoe answers |
 |---|---|---|---|
-| before | 79% | 0.838 | 6 / 6 |
-| after | 100% | 1.000 | 0 / 6 |
+| before | 94% | 0.956 | 9 / 9 |
+| after | 100% | 1.000 | 0 / 9 |
 
 | corpus | before, p50 | after, p50 | |
 |---|---|---|---|
@@ -260,7 +267,8 @@ vocabulary, no floor), on identical data:
 | 50,000 listings | 3,270 ms | 63 ms | 52× |
 
 Two caveats worth stating plainly: 100% on 34 queries means the eval set is small, not that
-retrieval is solved — extend `GOLDEN` and `NEGATIVES` in the benchmark as you add shoes. And
+retrieval is solved — the "Lost & Found" case above was found by a user typing one shoe name,
+not by the suite — extend `GOLDEN` and `NEGATIVES` in the benchmark as you add shoes. And
 the speed figures are on a synthetic catalogue with realistic vocabulary spread; a corpus
 where every listing shares the same few words behaves worse.
 
@@ -268,7 +276,7 @@ Which fusion to use is a measurement, not a preference:
 
 | configuration | recall@1 | recall@3 | MRR |
 |---|---|---|---|
-| linear blend, no vocabulary | 91% | 97% | 0.941 |
+| linear blend, no vocabulary | 94% | 97% | 0.956 |
 | linear blend + vocabulary | 100% | 100% | 1.000 |
 | RRF + vocabulary | 100% | 100% | 1.000 |
 | **hybrid + vocabulary** (shipped) | **100%** | **100%** | **1.000** |
@@ -314,7 +322,7 @@ print("saving:", products[0].savings(size="9"), "| still at retail:", products[0
 ## Tests
 
 ```bash
-python3 -m unittest discover -s tests -t . -v   # 135 tests, no network, no API key
+python3 -m unittest discover -s tests -t . -v   # 141 tests, no network, no API key
 ```
 
 Coverage is weighted toward the parts that are easy to get quietly wrong: title parsing,
@@ -340,5 +348,5 @@ sneakerrag/
   sources/       http (robots-aware) · jsonld · site specs · adapters
 data/fixtures/   synthetic sample catalogue for the seven sites
 tools/           fixture generator, speed + quality benchmark
-tests/           135 unit + integration tests
+tests/           141 unit + integration tests
 ```

@@ -52,6 +52,7 @@ NICKNAMES: dict[str, str] = {
     "574s": "574",
     "1906": "1906r",
     "992s": "992",
+    "dad": "990 1906r 2002r",
     "dad shoe": "990 1906r 2002r",
     "dad shoes": "990 1906r 2002r",
     # generic
@@ -122,17 +123,21 @@ def meaningful_tokens(text: str) -> list[str]:
     return [t for t in _tokens(text) if t not in QUERY_STOPWORDS]
 
 
-def expand_query(text: str) -> list[tuple[str, float]]:
-    """Turn a raw query into weighted search terms.
+def _expand(text: str) -> dict[str, tuple[float, set[str]]]:
+    """Weighted search terms, each tagged with the typed word(s) it came from.
 
-    Returns ``[(term, weight), ...]`` with the user's own words at weight 1.0
-    and everything the dictionary added below that.
+    Tracking provenance matters: an expansion must not be able to vouch for
+    itself. "chicago" expanding to "white black" should mark *chicago* as
+    satisfied when those colours match — not add two independent matches, which
+    would let the dictionary manufacture the relevance it is being judged on.
     """
-    out: dict[str, float] = {}
+    out: dict[str, tuple[float, set[str]]] = {}
 
-    def add(term: str, weight: float) -> None:
-        if term and out.get(term, 0.0) < weight:
-            out[term] = weight
+    def add(term: str, weight: float, source: str) -> None:
+        if not term:
+            return
+        current_weight, sources = out.get(term, (0.0, set()))
+        out[term] = (max(current_weight, weight), sources | {source})
 
     lowered = squash(text)
     # Multi-word keys first ("dad shoes" must beat "shoes").
@@ -141,26 +146,37 @@ def expand_query(text: str) -> list[tuple[str, float]]:
     ):
         if " " in phrase and re.search(rf"\b{re.escape(phrase)}\b", lowered):
             for token in _tokens(expansion):
-                add(token, ALIAS_WEIGHT)
+                add(token, ALIAS_WEIGHT, phrase.split()[0])
 
     # If the shopper typed nothing but noise, search the noise rather than
     # returning an empty query.
     for token in (meaningful_tokens(text) or _tokens(text)):
-        add(token, 1.0)
+        add(token, 1.0, token)
         if token in MISSPELLINGS:
             for fixed in _tokens(MISSPELLINGS[token]):
-                add(fixed, ALIAS_WEIGHT)
+                add(fixed, ALIAS_WEIGHT, token)
         if token in NICKNAMES:
             for alias in _tokens(NICKNAMES[token]):
-                add(alias, ALIAS_WEIGHT)
+                add(alias, ALIAS_WEIGHT, token)
         if token in COLOR_SLANG:
             for colour in _tokens(COLOR_SLANG[token]):
-                add(colour, ALIAS_WEIGHT)
+                add(colour, ALIAS_WEIGHT, token)
         # "sambas" -> "samba", "dunks" -> "dunk"
         if len(token) > 3 and token.endswith("s") and not token.endswith("ss"):
-            add(token[:-1], PLURAL_WEIGHT)
+            add(token[:-1], PLURAL_WEIGHT, token)
 
-    return sorted(out.items(), key=lambda kv: (-kv[1], kv[0]))
+    return out
+
+
+def expand_query(text: str) -> list[tuple[str, float]]:
+    """Weighted search terms: the shopper's own words at 1.0, additions below."""
+    return sorted(((term, weight) for term, (weight, _src) in _expand(text).items()),
+                  key=lambda kv: (-kv[1], kv[0]))
+
+
+def term_sources(text: str) -> dict[str, set[str]]:
+    """Which typed word each search term came from."""
+    return {term: sources for term, (_weight, sources) in _expand(text).items()}
 
 
 def trigrams(term: str) -> set[str]:

@@ -3,7 +3,12 @@
 import unittest
 
 from sneakerrag import retrieve as retrieve_module
-from sneakerrag.aliases import expand_query, meaningful_tokens, similarity
+from sneakerrag.aliases import (
+    expand_query,
+    meaningful_tokens,
+    similarity,
+    term_sources,
+)
 from sneakerrag.matching import cluster_listings
 from sneakerrag.models import QuerySpec
 from sneakerrag.retrieve import RERANK_DEPTH, VectorIndex
@@ -101,6 +106,32 @@ class TestRelevanceFloor(unittest.TestCase):
                       "converse chuck 70"):
             self.assertEqual(self.index.search(query, QuerySpec(in_stock_only=False)), [],
                              f"{query} should not match anything")
+
+    def test_detailed_names_for_shoes_we_lack_return_nothing(self):
+        for query in ("Air Jordan 1 Retro High OG 'Chicago Lost & Found",
+                      "yeezy 350 v2 zebra",
+                      "new balance 2002r protection pack"):
+            self.assertEqual(self.index.search(query, QuerySpec(in_stock_only=False)), [],
+                             f"{query} should not match anything")
+
+    def test_an_expansion_cannot_vouch_for_itself(self):
+        # "chicago" expands to "red white black". Those colours matching must
+        # credit *chicago*, not add three independent matches.
+        sources = term_sources("chicago")
+        self.assertEqual(sources["white"], {"chicago"})
+        self.assertEqual(sources["black"], {"chicago"})
+
+    def test_matching_only_descriptive_words_is_not_enough(self):
+        # Every catalogue has something black, low and retro.
+        self.assertEqual(self.index.search("black low retro og premium",
+                                           QuerySpec(in_stock_only=False)), [])
+
+    def test_an_exact_style_code_outranks_the_floor(self):
+        # A SKU is an identity: it should return the shoe even when the rest of
+        # the words match nothing.
+        hits = self.index.search("grey running shoe",
+                                 QuerySpec(style_code="M990GL6", in_stock_only=False))
+        self.assertEqual(hits[0].listing.style_code, "M990GL6")
 
     def test_a_browse_query_still_lists_the_catalogue(self):
         self.assertTrue(self.index.search("cheapest shoes", QuerySpec(in_stock_only=False)))

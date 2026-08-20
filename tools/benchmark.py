@@ -28,7 +28,9 @@ from sneakerrag.sources import get_sources
 
 # A shopper's phrasing -> the style code they meant. Nicknames, plurals,
 # misspellings and colorway slang are all deliberately represented.
-GOLDEN: list[tuple[str, str]] = [
+# (query, acceptable style codes). Most have exactly one right answer; a few
+# ("dad shoes") genuinely describe more than one shoe in the catalogue.
+GOLDEN: list[tuple[str, str | tuple[str, ...]]] = [
     ("cheapest air max 90", "HM0089-100"),
     ("am90 white black", "HM0089-100"),
     ("nike air max 90 in a 10.5", "HM0089-100"),
@@ -52,7 +54,7 @@ GOLDEN: list[tuple[str, str]] = [
     ("new balance 550 white green", "BB550PB1"),
     ("550s", "BB550PB1"),
     ("1906r silver", "M1906RA"),
-    ("dad shoes", "M1906RA"),
+    ("dad shoes", ("M1906RA", "M990GL6")),
     # Harder: colour-led, misspelled, code-led and gendered phrasings.
     ("black ultraboost", "IE1766"),
     ("white green 550", "BB550PB1"),
@@ -75,6 +77,12 @@ NEGATIVES: list[str] = [
     "on cloudmonster",
     "hoka clifton 9",
     "converse chuck 70",
+    # Long, detailed names for shoes we do not stock: the colorway slang and
+    # generic words ("retro", "high", "og") in these used to be enough to drag
+    # back a superficially similar listing.
+    "air jordan 1 retro high og chicago lost and found",
+    "yeezy 350 v2 zebra",
+    "new balance 2002r protection pack",
 ]
 
 MODELS = ["air max 90", "air max 95", "air max 97", "air force 1", "dunk low", "dunk high",
@@ -163,7 +171,9 @@ def bench_quality(configs=None) -> None:
                 code = codes.get(hit.listing.listing_id, "")
                 if code and code not in ranked:
                     ranked.append(code)
-            position = ranked.index(expected) + 1 if expected in ranked else 0
+            acceptable = (expected,) if isinstance(expected, str) else expected
+            positions = [ranked.index(code) + 1 for code in acceptable if code in ranked]
+            position = min(positions) if positions else 0
             if position == 1:
                 hits_at_1 += 1
             if 1 <= position <= 3:

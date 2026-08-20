@@ -292,7 +292,9 @@ class SneakerAgent:
 
     def search_products(self, spec: QuerySpec) -> list[Product]:
         """Retrieve listings and group them into ranked products."""
-        query = " ".join(x for x in (spec.terms, spec.style_code, " ".join(spec.brands)) if x)
+        # Brand is applied as a hard filter, so repeating it in the free-text
+        # query would only dilute the model terms and inflate term coverage.
+        query = " ".join(x for x in (spec.terms, spec.style_code) if x) or spec.text
         hits = self.index.search(query or spec.text, self._retrieval_spec(spec), top_k=spec.top_k)
         if not hits:
             return []
