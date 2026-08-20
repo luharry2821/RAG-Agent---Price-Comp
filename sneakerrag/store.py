@@ -10,6 +10,7 @@ from __future__ import annotations
 import json
 import sqlite3
 import threading
+from array import array
 from contextlib import closing
 from pathlib import Path
 from typing import Any, Iterable, Sequence
@@ -42,7 +43,8 @@ CREATE TABLE IF NOT EXISTS listings (
     image        TEXT,
     scraped_at   TEXT,
     raw          TEXT,
-    vector       TEXT
+    vector       TEXT,
+    vector_blob  BLOB
 );
 CREATE INDEX IF NOT EXISTS idx_listings_brand ON listings(brand);
 CREATE INDEX IF NOT EXISTS idx_listings_code  ON listings(style_code);
@@ -65,11 +67,22 @@ CREATE TABLE IF NOT EXISTS meta (
 """
 
 DEFAULT_DB = Path("data/catalog.db")
+
+
+def _decode_vector(row: sqlite3.Row) -> list[float] | None:
+    """Read a cached embedding, accepting the legacy JSON column."""
+    blob = row["vector_blob"] if "vector_blob" in row.keys() else None
+    if blob:
+        values = array("f")
+        values.frombytes(blob)
+        return list(values)
+    legacy = row["vector"] if "vector" in row.keys() else None
+    return json.loads(legacy) if legacy else None
 _COLUMNS = [
     "listing_id", "source", "source_name", "source_kind", "url", "title", "brand",
     "model", "colorway", "style_code", "retailer_sku", "price", "list_price",
     "currency", "shipping", "fees", "in_stock", "sizes", "size_prices", "gender",
-    "condition", "image", "scraped_at", "raw", "vector",
+    "condition", "image", "scraped_at", "raw", "vector_blob",
 ]
 
 
@@ -91,7 +104,8 @@ class Catalog:
     def _migrate(cur: sqlite3.Cursor) -> None:
         """Add columns introduced after a catalogue was first created."""
         existing = {row["name"] for row in cur.execute("PRAGMA table_info(listings)")}
-        for column, ddl in (("source_kind", "TEXT"), ("fees", "REAL"), ("size_prices", "TEXT")):
+        for column, ddl in (("source_kind", "TEXT"), ("fees", "REAL"),
+                            ("size_prices", "TEXT"), ("vector_blob", "BLOB")):
             if column not in existing:
                 cur.execute(f"ALTER TABLE listings ADD COLUMN {column} {ddl}")
 
@@ -135,14 +149,18 @@ class Catalog:
                     json.dumps(listing.sizes), json.dumps(listing.size_prices),
                     listing.gender, listing.condition, listing.image,
                     listing.scraped_at, json.dumps(listing.raw, default=str),
-                    json.dumps(list(vector)) if vector is not None else None,
+                    # float32 binary rather than JSON text: a 512-dim vector is
+                    # 2 KB instead of ~6 KB and needs no parsing on the way back,
+                    # which is most of the cost of opening a large catalogue.
+                    array("f", vector).tobytes() if vector is not None else None,
                 )
                 placeholders = ", ".join("?" * len(_COLUMNS))
                 cur.execute(
                     f"INSERT INTO listings ({', '.join(_COLUMNS)}) VALUES ({placeholders}) "
                     f"ON CONFLICT(listing_id) DO UPDATE SET "
                     + ", ".join(f"{c}=excluded.{c}" for c in _COLUMNS if c != "listing_id")
-                    + (" , vector=COALESCE(excluded.vector, listings.vector)" if vector is None else ""),
+                    + (" , vector_blob=COALESCE(excluded.vector_blob, listings.vector_blob)"
+                       if vector is None else ""),
                     values,
                 )
                 cur.execute(
@@ -188,7 +206,7 @@ class Catalog:
         with self._lock, closing(self.conn.cursor()) as cur:
             rows = list(cur.execute("SELECT * FROM listings"))
         listings = [self._row_to_listing(r) for r in rows]
-        vectors = [json.loads(r["vector"]) if r["vector"] else None for r in rows]
+        vectors = [_decode_vector(r) for r in rows]
         return listings, vectors
 
     def price_history(self, listing_id: str) -> list[dict[str, Any]]:

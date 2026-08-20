@@ -113,13 +113,40 @@ gender and — most importantly — the manufacturer style code, with per-brand 
   bridge two different colorways. When a colourless listing has two equally good suitors it
   stays on its own rather than quoting you a price for the wrong shoe.
 
-**4. Retrieve** (`retrieve.py`, `embeddings.py`). Hybrid BM25 + vector search over listing
-text, with hard structured filters (brand, size, condition, stock, budget) and a large boost
-for an exact style-code hit. The budget filter uses the price of the *requested* size, not
-the seller's "from" price. Embeddings are a dependency-free hashed bag of words, bigrams and
-character 4-grams; short product titles are dominated by lexical signal, and a neural model
-would separate `990v6` from `990v5` *worse*, not better. Set `SNEAKERRAG_EMBEDDER=st` to use
-`sentence-transformers` if it's installed.
+**4. Retrieve** (`retrieve.py`, `aliases.py`, `embeddings.py`). Hybrid search with hard
+structured filters (brand, size, condition, stock, budget) applied first — a shopping
+constraint is a predicate, not a nudge — and the budget checked against the price of the
+*requested* size rather than the seller's "from" price. On top of that:
+
+- **Inverted index, BM25F.** Only documents containing a query term are scored, and every
+  per-document statistic is computed once at build time. Term frequencies are weighted by
+  field, so a match on the style code or model name counts for far more than the same word
+  buried in a marketing title.
+- **Shopper vocabulary** (`aliases.py`). People type "panda dunks", "af1s", "sambas",
+  "adiddas", "dad shoes". A small domain dictionary — nicknames, plurals, colorway slang,
+  common misspellings — plus trigram typo repair against the actual corpus vocabulary.
+  Expansions are damped, so an alias can add recall but never outvote what was typed.
+  Retail noise words ("cheapest", "shoes", "size") are dropped from the query, which stops
+  them crowding out the one token that identifies the shoe.
+- **Hybrid fusion.** BM25 and cosine live on incomparable scales. Normalising each by its
+  max is sharp at rank 1 (BM25's *margin* is real signal); reciprocal-rank fusion is
+  steadier deeper down (it can't be skewed by an outlier). Measured, neither wins outright,
+  so the default averages both — see the table below.
+- **A relevance floor.** Ask for an Asics and a nearest-neighbour search will hand back a
+  Nike; the agent then fluently prices a shoe you never asked about, which is worse than no
+  answer. A listing must match a reasonable share of the typed words, or be strongly
+  similar overall, to be returned at all. Out-of-catalogue queries return nothing, and the
+  agent says so.
+- **Two-stage, rare terms first.** BM25 is the cheap first pass and only its best candidates
+  get the cosine and fusion work; within it, rare terms select candidates while common ones
+  ("white", "low") merely refine the ranking rather than walking their whole posting list.
+
+Embeddings are a dependency-free hashed bag of words, bigrams and character 4-grams; short
+product titles are dominated by lexical signal, and a neural model would separate `990v6`
+from `990v5` *worse*, not better. Set `SNEAKERRAG_EMBEDDER=st` to use
+`sentence-transformers` if it's installed — the index detects a real dense model and widens
+the vector pass to the whole catalogue automatically. Install `numpy` and the cosine pass
+becomes a single matrix multiply; it is optional and everything works without it.
 
 **5. Compare** (`models.py`). Within a cluster, offers are ranked by delivered price for the
 requested size, honouring availability, stock and condition.
@@ -175,6 +202,49 @@ source = StaticSource(SITES_BY_KEY["goat"], records_from_your_licensed_feed)
 The `product_link` patterns in `sites.py` are a starting point, not a guarantee — site URL
 shapes change, so verify them against the live markup before trusting a live run.
 
+## Performance and quality
+
+`tools/benchmark.py` measures both, so improvements are demonstrated rather than asserted.
+Quality is scored on 34 real-shopper phrasings (nicknames, plurals, misspellings, colorway
+slang, style codes) plus 6 queries for shoes the catalogue does not carry, where the right
+answer is *no* answer.
+
+```bash
+python3 tools/benchmark.py             # both halves
+python3 tools/benchmark.py --quality
+```
+
+Against the previous implementation (max-normalised blend over a full per-query scan, no
+vocabulary, no floor), on identical data:
+
+| | recall@1 | MRR | wrong-shoe answers |
+|---|---|---|---|
+| before | 79% | 0.838 | 6 / 6 |
+| after | 100% | 1.000 | 0 / 6 |
+
+| corpus | before, p50 | after, p50 | |
+|---|---|---|---|
+| 1,000 listings | 63 ms | 2.0 ms | 32× |
+| 10,000 listings | 608 ms | 15 ms | 41× |
+| 50,000 listings | 3,270 ms | 63 ms | 52× |
+
+Two caveats worth stating plainly: 100% on 34 queries means the eval set is small, not that
+retrieval is solved — extend `GOLDEN` and `NEGATIVES` in the benchmark as you add shoes. And
+the speed figures are on a synthetic catalogue with realistic vocabulary spread; a corpus
+where every listing shares the same few words behaves worse.
+
+Which fusion to use is a measurement, not a preference:
+
+| configuration | recall@1 | recall@3 | MRR |
+|---|---|---|---|
+| linear blend, no vocabulary | 91% | 97% | 0.941 |
+| linear blend + vocabulary | 100% | 100% | 1.000 |
+| RRF + vocabulary | 100% | 100% | 1.000 |
+| **hybrid + vocabulary** (shipped) | **100%** | **100%** | **1.000** |
+
+The vocabulary is doing most of the work; fusion mode is a tiebreak at this corpus size.
+`VectorIndex(fusion="linear"|"rrf"|"hybrid", expand=False)` flips each knob.
+
 ## Price history
 
 Every ingest appends a point per listing, so re-running it on a schedule turns the catalogue
@@ -213,13 +283,14 @@ print("saving:", products[0].savings(size="9"), "| still at retail:", products[0
 ## Tests
 
 ```bash
-python3 -m unittest discover -s tests -t . -v   # 113 tests, no network, no API key
+python3 -m unittest discover -s tests -t . -v   # 135 tests, no network, no API key
 ```
 
 Coverage is weighted toward the parts that are easy to get quietly wrong: title parsing,
 SKU matching vetoes, per-size and delivered-price ranking, condition filters, retrieval
-filters, price history, and the live-scrape path (exercised against fixture HTML through a
-fake HTTP client).
+filters and the relevance floor, nickname and typo handling, price history, and the
+live-scrape path (exercised against fixture HTML through a fake HTTP client). Results are
+asserted to be identical with and without `numpy`.
 
 ## Layout
 
@@ -229,13 +300,14 @@ sneakerrag/
   normalize.py   brands, models, colorways, style codes, prices, sizes
   matching.py    SKU clustering — style-code join + guarded fuzzy join
   embeddings.py  dependency-free hashed embeddings (pluggable)
-  retrieve.py    hybrid BM25 + vector index with structured filters
+  aliases.py     sneaker nicknames, slang, misspellings, query stopwords
+  retrieve.py    inverted-index BM25F + vector index, hybrid fusion, relevance floor
   store.py       SQLite catalogue, cached vectors, price history
   llm.py         Claude wrapper with an offline fallback
   agent.py       the RAG pipeline
   cli.py/api.py  command line and JSON API
   sources/       http (robots-aware) · jsonld · site specs · adapters
 data/fixtures/   synthetic sample catalogue for the seven sites
-tools/           fixture generator
-tests/           113 unit + integration tests
+tools/           fixture generator, speed + quality benchmark
+tests/           135 unit + integration tests
 ```

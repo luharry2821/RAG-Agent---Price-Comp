@@ -14,6 +14,7 @@ dependencies = []          # the core runs on the standard library alone
 [project.optional-dependencies]
 claude = ["anthropic>=0.40"]        # natural-language answers
 live = ["requests>=2.31"]           # nicer HTTP for live scraping
+fast = ["numpy>=1.24"]              # vectorised cosine pass
 dense = ["sentence-transformers>=2.2"]   # optional dense embeddings
 
 [project.scripts]

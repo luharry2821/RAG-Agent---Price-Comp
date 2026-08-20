@@ -17,6 +17,7 @@ import hashlib
 import math
 import os
 import re
+from functools import lru_cache
 from typing import Iterable, Protocol, Sequence
 
 DEFAULT_DIM = 512
@@ -54,7 +55,11 @@ def _features(text: str) -> Iterable[tuple[str, float]]:
     return feats.items()
 
 
+@lru_cache(maxsize=200_000)
 def _hash(key: str, dim: int) -> tuple[int, float]:
+    """Bucket and sign for a feature. Memoised: across a catalogue the same
+    words and character n-grams recur constantly, and the hash is the bulk of
+    embedding cost."""
     digest = hashlib.blake2b(key.encode("utf-8"), digest_size=8).digest()
     value = int.from_bytes(digest, "big")
     sign = 1.0 if value & 1 else -1.0        # signed hashing cancels collisions

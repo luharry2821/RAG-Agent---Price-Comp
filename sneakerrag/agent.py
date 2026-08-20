@@ -339,6 +339,9 @@ class SneakerAgent:
             if not product.at_retail and product.has_resale_listings:
                 header += "  [sold out at the brand store; resale only]"
             lines.append(header)
+            gap = model_gap(spec, product)
+            if gap:
+                lines.append(f"  NOTE: {gap}")
             # Everything in the cluster is cited, including listings that fail
             # the buyer's constraints — the flags below explain each exclusion.
             # Cite every listing in the cluster (size filter off), but order
@@ -397,6 +400,26 @@ class SneakerAgent:
 # --------------------------------------------------------------------------
 # Rendering helpers
 # --------------------------------------------------------------------------
+
+_MODEL_NUMBER = re.compile(r"\b\d{2,4}(?:v\d)?\b")
+
+
+def model_gap(spec: QuerySpec, product: Product) -> str:
+    """Warn when the catalogue has a sibling but not the model asked for.
+
+    "air max 95" retrieving an Air Max 90 is a useful near miss, but only if the
+    answer says so — silently pricing the 90 answers a question nobody asked.
+    """
+    asked = set(_MODEL_NUMBER.findall(spec.terms or spec.text))
+    if not asked:
+        return ""
+    have = set(_MODEL_NUMBER.findall(product.model))
+    missing = sorted(asked - have)
+    if not missing or not have:
+        return ""
+    return (f"No exact match for \"{' '.join(missing)}\" in the catalogue — "
+            f"showing the closest, {product.display_name}.")
+
 
 def _msrp(product: Product) -> float | None:
     """Best available MSRP for a product: the brand store price, else a
@@ -475,6 +498,9 @@ def render_template_answer(question: str, spec: QuerySpec, products: Sequence[Pr
             title += f" — MSRP {fmt_money(msrp)}"
         out.append(title)
 
+        gap = model_gap(spec, product)
+        if gap:
+            out.append(f"  {gap}")
         if not product.at_retail and product.has_resale_listings:
             out.append("  Sold out at the brand store — the listings below are resale asks.")
 
