@@ -29,6 +29,13 @@ BRAND_ALIASES: dict[str, tuple[str, ...]] = {
 # Sub-labels that should keep their parent brand but not pollute the model name.
 BRAND_SUBLABELS = ("originals", "performance", "sportswear", "nikelab", "terrex", "numeric")
 
+# Aliases that identify the brand but are also part of the model name people
+# use: nobody calls it a "Nike 1 Retro High OG".
+MODEL_PRESERVING_ALIASES = ("jordan", "air jordan", "y-3", "yeezy")
+
+# How each brand writes its own name.
+BRAND_DISPLAY = {"nike": "Nike", "adidas": "adidas", "new balance": "New Balance"}
+
 SUPPORTED_BRANDS = tuple(BRAND_ALIASES)
 
 
@@ -192,6 +199,8 @@ def parse_title(title: str, brand_hint: str = "") -> dict[str, str]:
     head = squash(head)
     if brand:
         for alias in sorted(BRAND_ALIASES[brand], key=len, reverse=True):
+            if alias in MODEL_PRESERVING_ALIASES:
+                continue
             head = re.sub(rf"\b{re.escape(alias)}\b", " ", head)
         for sub in BRAND_SUBLABELS:
             head = re.sub(rf"\b{re.escape(sub)}\b", " ", head)
@@ -257,7 +266,18 @@ def normalize_colorway(text: str) -> str:
     if not t:
         return ""
     t = re.sub(r"\b(colou?r|colorway)\b", " ", t)
-    parts = [p.strip() for p in re.split(r"[/,]| and ", t) if p.strip()]
+    parts: list[str] = []
+    for chunk in re.split(r"[/,]", t):
+        chunk = chunk.strip()
+        if not chunk:
+            continue
+        # Split "black and white" but not "lost and found": only when the words
+        # either side are actually colours.
+        halves = [h.strip() for h in chunk.split(" and ")]
+        if len(halves) > 1 and all(set(h.split()) & COLOR_WORDS for h in halves if h):
+            parts.extend(h for h in halves if h)
+        else:
+            parts.append(chunk)
     seen: list[str] = []
     for p in parts:
         p = re.sub(r"\s+", " ", p)

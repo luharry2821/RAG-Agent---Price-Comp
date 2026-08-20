@@ -68,6 +68,13 @@ def build_listing(spec: SiteSpec, data: dict[str, Any]) -> Listing | None:
     gender = (str(data.get("gender") or "").strip().lower()
               or parsed["gender"] or detect_gender(title))
     model = data.get("model") or parsed["model"]
+    if colorway and model:
+        # A title like "Air Jordan 1 Retro High OG 'Chicago Lost and Found'" has
+        # no separator, so the colorway ends up parsed into the model too.
+        colour_words = set(re.split(r"[^a-z0-9]+", colorway))
+        trimmed = [w for w in model.split() if w not in colour_words]
+        if trimmed:
+            model = " ".join(trimmed)
 
     shipping, _ = parse_price(data.get("shipping"))
     fees, _ = parse_price(data.get("fees"))

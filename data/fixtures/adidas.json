@@ -32,7 +32,7 @@
       "condition": "new",
       "gender": "unisex",
       "image": "https://images.example.com/adidas-samba-og.jpg",
-      "scraped_at": "2026-08-19T18:05:03+00:00"
+      "scraped_at": "2026-08-19T19:00:32+00:00"
     },
     {
       "title": "Ultraboost 5 Shoes",
@@ -63,7 +63,7 @@
       "condition": "new",
       "gender": "men",
       "image": "https://images.example.com/adidas-ultraboost-5.jpg",
-      "scraped_at": "2026-08-19T19:05:03+00:00"
+      "scraped_at": "2026-08-19T20:00:32+00:00"
     },
     {
       "title": "Campus 00s Shoes",
@@ -93,7 +93,7 @@
       "condition": "new",
       "gender": "unisex",
       "image": "https://images.example.com/adidas-campus-00s.jpg",
-      "scraped_at": "2026-08-19T23:05:03+00:00"
+      "scraped_at": "2026-08-20T00:00:32+00:00"
     }
   ]
 }

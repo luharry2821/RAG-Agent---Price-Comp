@@ -9,6 +9,7 @@ from sneakerrag.aliases import (
     similarity,
     term_sources,
 )
+from sneakerrag.agent import match_gap
 from sneakerrag.matching import cluster_listings
 from sneakerrag.models import QuerySpec
 from sneakerrag.retrieve import RERANK_DEPTH, VectorIndex
@@ -108,7 +109,7 @@ class TestRelevanceFloor(unittest.TestCase):
                              f"{query} should not match anything")
 
     def test_detailed_names_for_shoes_we_lack_return_nothing(self):
-        for query in ("Air Jordan 1 Retro High OG 'Chicago Lost & Found",
+        for query in ("Air Jordan 4 Retro Bred Reimagined",
                       "yeezy 350 v2 zebra",
                       "new balance 2002r protection pack"):
             self.assertEqual(self.index.search(query, QuerySpec(in_stock_only=False)), [],
@@ -186,14 +187,35 @@ class TestIndexMechanics(unittest.TestCase):
 
 
 class TestAgentNearMiss(unittest.TestCase):
-    def test_model_gap_is_reported(self):
-        from sneakerrag.agent import model_gap
-        products = cluster_listings(
-            [l for a in get_sources() for l in a.search("air max", limit=999)])
-        air_max_90 = next(p for p in products if p.model == "air max 90")
-        spec = QuerySpec(terms="air max 95")
-        self.assertIn("95", model_gap(spec, air_max_90))
-        self.assertEqual(model_gap(QuerySpec(terms="air max 90"), air_max_90), "")
+    """A near miss must be labelled, never quietly priced as the real thing."""
+
+    @classmethod
+    def setUpClass(cls):
+        cls.products = cluster_listings(
+            [l for a in get_sources() for l in a.search("", limit=999)])
+
+    def product(self, model_fragment: str):
+        return next(p for p in self.products if model_fragment in p.model)
+
+    def test_a_different_model_number_is_reported(self):
+        air_max_90 = self.product("air max 90")
+        self.assertIn("95", match_gap(QuerySpec(terms="air max 95"), air_max_90))
+        self.assertEqual(match_gap(QuerySpec(terms="air max 90"), air_max_90), "")
+
+    def test_a_different_colorway_of_the_same_shoe_is_reported(self):
+        jordan = self.product("air jordan 1")
+        gap = match_gap(QuerySpec(terms="air jordan 1 retro high og love letter"), jordan)
+        self.assertIn("love letter", gap)
+
+    def test_the_shoe_actually_asked_for_gets_no_caveat(self):
+        jordan = self.product("air jordan 1")
+        self.assertEqual(
+            match_gap(QuerySpec(terms="air jordan 1 retro high og chicago lost and found"),
+                      jordan), "")
+
+    def test_nicknames_do_not_trigger_a_false_caveat(self):
+        dunk = self.product("dunk low")
+        self.assertEqual(match_gap(QuerySpec(terms="panda dunks"), dunk), "")
 
 
 if __name__ == "__main__":

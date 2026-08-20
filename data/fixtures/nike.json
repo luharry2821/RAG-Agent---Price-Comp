@@ -30,7 +30,7 @@
       "condition": "new",
       "gender": "men",
       "image": "https://images.example.com/nike-air-max-90.jpg",
-      "scraped_at": "2026-08-19T18:05:03+00:00"
+      "scraped_at": "2026-08-19T19:00:32+00:00"
     },
     {
       "title": "Nike Air Force 1 '07 Men's Shoes",
@@ -61,7 +61,7 @@
       "condition": "new",
       "gender": "men",
       "image": "https://images.example.com/nike-air-force-1-07.jpg",
-      "scraped_at": "2026-08-19T15:05:03+00:00"
+      "scraped_at": "2026-08-19T16:00:32+00:00"
     },
     {
       "title": "Nike Pegasus 41 Women's Shoes",
@@ -93,7 +93,7 @@
       "condition": "new",
       "gender": "women",
       "image": "https://images.example.com/nike-pegasus-41.jpg",
-      "scraped_at": "2026-08-19T10:05:03+00:00"
+      "scraped_at": "2026-08-19T11:00:32+00:00"
     }
   ]
 }

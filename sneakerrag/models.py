@@ -8,6 +8,8 @@ from dataclasses import dataclass, field, asdict
 from datetime import datetime, timezone
 from typing import Any
 
+from .normalize import BRAND_DISPLAY, normalize_brand
+
 
 def utcnow() -> str:
     return datetime.now(timezone.utc).isoformat(timespec="seconds")
@@ -144,9 +146,12 @@ class Product:
 
     @property
     def display_name(self) -> str:
-        name = f"{self.brand.title()} {self.model.title()}".strip()
+        # Skip the brand prefix when the model already carries one
+        # ("Air Jordan 1 …" should not become "Nike Air Jordan 1 …").
+        prefix = "" if normalize_brand(self.model) else BRAND_DISPLAY.get(self.brand, self.brand.title())
+        name = f"{prefix} {titlecase(self.model)}".strip()
         if self.colorway:
-            name += f" — {self.colorway.title()}"
+            name += f" — {titlecase(self.colorway)}"
         return name
 
     def offers(self, *, size: str = "", in_stock_only: bool = True,
@@ -273,6 +278,15 @@ class Answer:
 
     def to_json(self, indent: int = 2) -> str:
         return json.dumps(self.to_dict(), indent=indent, default=str)
+
+
+ACRONYMS = {"og", "sb", "gs", "td", "ps", "nb", "usa", "uk", "us", "xt", "qs", "se"}
+
+
+def titlecase(text: str) -> str:
+    """Title case that leaves sneaker acronyms alone: OG, not Og."""
+    return " ".join(word.upper() if word.lower() in ACRONYMS else word.title()
+                    for word in text.split())
 
 
 CURRENCY_SYMBOLS = {"USD": "$", "GBP": "£", "EUR": "€", "CAD": "CA$"}

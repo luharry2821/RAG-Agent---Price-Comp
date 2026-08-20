@@ -34,7 +34,7 @@
       "condition": "new",
       "gender": "men",
       "image": "https://images.example.com/nike-air-max-90.jpg",
-      "scraped_at": "2026-08-19T09:05:03+00:00"
+      "scraped_at": "2026-08-19T10:00:32+00:00"
     },
     {
       "title": "Nike Air Force 1 '07 Triple White CW2288-111",
@@ -68,7 +68,7 @@
       "condition": "new",
       "gender": "men",
       "image": "https://images.example.com/nike-air-force-1-07.jpg",
-      "scraped_at": "2026-08-19T12:05:03+00:00"
+      "scraped_at": "2026-08-19T13:00:32+00:00"
     },
     {
       "title": "Nike Dunk Low Retro White/Black DD1391-100",
@@ -106,7 +106,7 @@
       "condition": "new",
       "gender": "men",
       "image": "https://images.example.com/nike-dunk-low-retro.jpg",
-      "scraped_at": "2026-08-19T14:05:03+00:00"
+      "scraped_at": "2026-08-19T15:00:32+00:00"
     },
     {
       "title": "Nike Pegasus 41 Black/White FD2723-001",
@@ -140,7 +140,7 @@
       "condition": "new",
       "gender": "women",
       "image": "https://images.example.com/nike-pegasus-41.jpg",
-      "scraped_at": "2026-08-19T08:05:03+00:00"
+      "scraped_at": "2026-08-19T09:00:32+00:00"
     },
     {
       "title": "adidas Samba OG Cloud White/Core Black",
@@ -174,7 +174,7 @@
       "condition": "new",
       "gender": "unisex",
       "image": "https://images.example.com/adidas-samba-og.jpg",
-      "scraped_at": "2026-08-19T04:05:03+00:00"
+      "scraped_at": "2026-08-19T05:00:32+00:00"
     },
     {
       "title": "adidas Ultraboost 5 Core Black IE1766",
@@ -212,7 +212,7 @@
       "condition": "new",
       "gender": "men",
       "image": "https://images.example.com/adidas-ultraboost-5.jpg",
-      "scraped_at": "2026-08-19T20:05:03+00:00"
+      "scraped_at": "2026-08-19T21:00:32+00:00"
     },
     {
       "title": "New Balance 990v6 Grey M990GL6",
@@ -250,7 +250,7 @@
       "condition": "new",
       "gender": "men",
       "image": "https://images.example.com/new-balance-990v6.jpg",
-      "scraped_at": "2026-08-19T19:05:03+00:00"
+      "scraped_at": "2026-08-19T20:00:32+00:00"
     },
     {
       "title": "New Balance 550 White/Green BB550PB1",
@@ -288,7 +288,7 @@
       "condition": "new",
       "gender": "unisex",
       "image": "https://images.example.com/new-balance-550.jpg",
-      "scraped_at": "2026-08-19T11:05:03+00:00"
+      "scraped_at": "2026-08-19T12:00:32+00:00"
     },
     {
       "title": "New Balance 1906R Silver/Sea Salt M1906RA",
@@ -328,7 +328,45 @@
       "condition": "new",
       "gender": "unisex",
       "image": "https://images.example.com/new-balance-1906r.jpg",
-      "scraped_at": "2026-08-19T08:05:03+00:00"
+      "scraped_at": "2026-08-19T09:00:32+00:00"
+    },
+    {
+      "title": "Air Jordan 1 Retro High OG Chicago Lost and Found DZ5485-612",
+      "url": "https://www.kickscrew.com/products/air-jordan-1-retro-high-og-chicago-lost-and-found-dz5485-612",
+      "brand": "Air Jordan",
+      "colorway": "Chicago Lost and Found",
+      "style_code": "DZ5485-612",
+      "retailer_sku": "KIC-200119",
+      "price": 232.93,
+      "list_price": 180.0,
+      "currency": "USD",
+      "shipping": 0.0,
+      "fees": 0.0,
+      "in_stock": true,
+      "sizes": [
+        "7.5",
+        "8",
+        "8.5",
+        "9",
+        "9.5",
+        "10.5",
+        "11",
+        "13"
+      ],
+      "size_prices": {
+        "7.5": 245.63,
+        "8": 261.77,
+        "8.5": 277.12,
+        "9": 284.48,
+        "9.5": 292.61,
+        "10.5": 303.17,
+        "11": 286.31,
+        "13": 232.93
+      },
+      "condition": "new",
+      "gender": "men",
+      "image": "https://images.example.com/air-jordan-1-retro-high-og.jpg",
+      "scraped_at": "2026-08-19T23:00:32+00:00"
     }
   ]
 }

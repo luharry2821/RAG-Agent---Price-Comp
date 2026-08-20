@@ -70,6 +70,9 @@ GENERIC_TERMS = COLOR_WORDS | {
     # 990v6 on the words "new balance" is the same mistake as matching on
     # "black". The model is what identifies the shoe.
     "nike", "adidas", "jordan", "balance", "nb",
+    # "Air" spans Air Max, Air Force and Air Jordan — it places a shoe in a
+    # family, it does not pick one out of it.
+    "air",
 }
 
 # Two-stage retrieval: BM25 is a cheap first pass, and only its best candidates

@@ -38,7 +38,7 @@
       "condition": "new",
       "gender": "men",
       "image": "https://images.example.com/nike-air-max-90.jpg",
-      "scraped_at": "2026-08-19T18:05:03+00:00"
+      "scraped_at": "2026-08-19T19:00:32+00:00"
     },
     {
       "title": "Nike Air Force 1 '07 'Triple White'",
@@ -74,7 +74,7 @@
       "condition": "new",
       "gender": "men",
       "image": "https://images.example.com/nike-air-force-1-07.jpg",
-      "scraped_at": "2026-08-20T00:05:03+00:00"
+      "scraped_at": "2026-08-20T01:00:32+00:00"
     },
     {
       "title": "Nike Dunk Low Retro 'White/Black'",
@@ -104,7 +104,7 @@
       "condition": "new",
       "gender": "men",
       "image": "https://images.example.com/nike-dunk-low-retro.jpg",
-      "scraped_at": "2026-08-19T11:05:03+00:00"
+      "scraped_at": "2026-08-19T12:00:32+00:00"
     },
     {
       "title": "Nike Pegasus 41 'Black/White'",
@@ -138,7 +138,7 @@
       "condition": "new",
       "gender": "women",
       "image": "https://images.example.com/nike-pegasus-41.jpg",
-      "scraped_at": "2026-08-20T00:05:03+00:00"
+      "scraped_at": "2026-08-20T01:00:32+00:00"
     },
     {
       "title": "adidas Samba OG 'Cloud White/Core Black'",
@@ -178,7 +178,7 @@
       "condition": "new",
       "gender": "unisex",
       "image": "https://images.example.com/adidas-samba-og.jpg",
-      "scraped_at": "2026-08-19T18:05:03+00:00"
+      "scraped_at": "2026-08-19T19:00:32+00:00"
     },
     {
       "title": "adidas Ultraboost 5 'Core Black'",
@@ -216,7 +216,7 @@
       "condition": "new",
       "gender": "men",
       "image": "https://images.example.com/adidas-ultraboost-5.jpg",
-      "scraped_at": "2026-08-19T18:05:03+00:00"
+      "scraped_at": "2026-08-19T19:00:32+00:00"
     },
     {
       "title": "adidas Campus 00s 'Grey/White'",
@@ -254,7 +254,7 @@
       "condition": "new",
       "gender": "unisex",
       "image": "https://images.example.com/adidas-campus-00s.jpg",
-      "scraped_at": "2026-08-19T13:05:03+00:00"
+      "scraped_at": "2026-08-19T14:00:32+00:00"
     },
     {
       "title": "New Balance 990v6 'Grey'",
@@ -292,7 +292,7 @@
       "condition": "new",
       "gender": "men",
       "image": "https://images.example.com/new-balance-990v6.jpg",
-      "scraped_at": "2026-08-19T05:05:03+00:00"
+      "scraped_at": "2026-08-19T06:00:32+00:00"
     },
     {
       "title": "New Balance 550 'White/Green'",
@@ -324,7 +324,7 @@
       "condition": "new",
       "gender": "unisex",
       "image": "https://images.example.com/new-balance-550.jpg",
-      "scraped_at": "2026-08-19T23:05:03+00:00"
+      "scraped_at": "2026-08-20T00:00:32+00:00"
     },
     {
       "title": "New Balance 1906R 'Silver/Sea Salt'",
@@ -362,7 +362,41 @@
       "condition": "new",
       "gender": "unisex",
       "image": "https://images.example.com/new-balance-1906r.jpg",
-      "scraped_at": "2026-08-20T00:05:03+00:00"
+      "scraped_at": "2026-08-20T01:00:32+00:00"
+    },
+    {
+      "title": "Air Jordan 1 Retro High OG 'Chicago Lost and Found'",
+      "url": "https://www.stadiumgoods.com/en-us/shopping/air-jordan-1-retro-high-og-chicago-lost-and-found-dz5485-612",
+      "brand": "Air Jordan",
+      "colorway": "Chicago Lost and Found",
+      "style_code": "",
+      "retailer_sku": "STA-200120",
+      "price": 272.48,
+      "list_price": 180.0,
+      "currency": "USD",
+      "shipping": 12.0,
+      "fees": 0.0,
+      "in_stock": true,
+      "sizes": [
+        "9.5",
+        "10",
+        "10.5",
+        "11.5",
+        "12",
+        "13"
+      ],
+      "size_prices": {
+        "9.5": 344.34,
+        "10": 340.85,
+        "10.5": 342.46,
+        "11.5": 301.83,
+        "12": 295.71,
+        "13": 272.48
+      },
+      "condition": "new",
+      "gender": "men",
+      "image": "https://images.example.com/air-jordan-1-retro-high-og.jpg",
+      "scraped_at": "2026-08-19T09:00:32+00:00"
     }
   ]
 }

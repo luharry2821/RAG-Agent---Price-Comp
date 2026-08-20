@@ -22,6 +22,7 @@ from .embeddings import get_embedder
 from .llm import LLMUnavailable, get_llm, parse_json_response
 from .matching import cluster_listings
 from .models import Answer, Citation, Listing, Product, QuerySpec, fmt_money
+from .aliases import term_sources
 from .normalize import (
     BRAND_ALIASES,
     extract_style_code,
@@ -29,7 +30,7 @@ from .normalize import (
     normalize_style_code,
     squash,
 )
-from .retrieve import VectorIndex
+from .retrieve import GENERIC_TERMS, VectorIndex
 from .sources import get_sources
 from .store import Catalog, DEFAULT_DB
 
@@ -341,7 +342,7 @@ class SneakerAgent:
             if not product.at_retail and product.has_resale_listings:
                 header += "  [sold out at the brand store; resale only]"
             lines.append(header)
-            gap = model_gap(spec, product)
+            gap = match_gap(spec, product)
             if gap:
                 lines.append(f"  NOTE: {gap}")
             # Everything in the cluster is cited, including listings that fail
@@ -406,20 +407,41 @@ class SneakerAgent:
 _MODEL_NUMBER = re.compile(r"\b\d{2,4}(?:v\d)?\b")
 
 
-def model_gap(spec: QuerySpec, product: Product) -> str:
-    """Warn when the catalogue has a sibling but not the model asked for.
+def match_gap(spec: QuerySpec, product: Product) -> str:
+    """Name the parts of the question this product does not actually answer.
 
-    "air max 95" retrieving an Air Max 90 is a useful near miss, but only if the
-    answer says so — silently pricing the 90 answers a question nobody asked.
+    Two shoes can share a silhouette and differ in the only thing the shopper
+    named: an Air Jordan 1 Retro High OG "Love Letter" and the same shoe in
+    "Chicago Lost and Found" agree on every word except the two that matter.
+    Quoting one for the other without saying so answers a question nobody
+    asked — so any typed word the product cannot account for is reported.
     """
-    asked = set(_MODEL_NUMBER.findall(spec.terms or spec.text))
-    if not asked:
+    query = (spec.terms or spec.text or "").strip()
+    if not query:
         return ""
-    have = set(_MODEL_NUMBER.findall(product.model))
-    missing = sorted(asked - have)
-    if not missing or not have:
+
+    haystack = " ".join([product.model, product.colorway, product.style_code]
+                        + [l.title for l in product.listings]).lower()
+    known = set(re.split(r"[^a-z0-9]+", haystack))
+    sources = term_sources(query)
+
+    # A typed word counts as answered if it, or anything it expands to
+    # ("panda" -> white/black), appears in the product.
+    satisfied: dict[str, bool] = {}
+    for term, origins in sources.items():
+        for origin in origins:
+            satisfied[origin] = satisfied.get(origin, False) or term in known
+
+    missing = [word for word, found in satisfied.items()
+               if not found and word not in GENERIC_TERMS and len(word) > 1]
+    if not missing:
         return ""
-    return (f"No exact match for \"{' '.join(missing)}\" in the catalogue — "
+
+    numbers = [word for word in missing if _MODEL_NUMBER.fullmatch(word)]
+    detail = " ".join(sorted(missing, key=lambda w: query.find(w)))
+    if numbers and not any(_MODEL_NUMBER.findall(product.model)):
+        return ""                       # nothing numeric to contradict
+    return (f"No exact match for \"{detail}\" in the catalogue — "
             f"showing the closest, {product.display_name}.")
 
 
@@ -500,7 +522,7 @@ def render_template_answer(question: str, spec: QuerySpec, products: Sequence[Pr
             title += f" — MSRP {fmt_money(msrp)}"
         out.append(title)
 
-        gap = model_gap(spec, product)
+        gap = match_gap(spec, product)
         if gap:
             out.append(f"  {gap}")
         if not product.at_retail and product.has_resale_listings:

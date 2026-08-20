@@ -242,7 +242,7 @@ shapes change, so verify them against the live markup before trusting a live run
 ## Performance and quality
 
 `tools/benchmark.py` measures both, so improvements are demonstrated rather than asserted.
-Quality is scored on 34 real-shopper phrasings (nicknames, plurals, misspellings, colorway
+Quality is scored on 37 real-shopper phrasings (nicknames, plurals, misspellings, colorway
 slang, style codes) plus 9 queries for shoes the catalogue does not carry — including
 detailed ones like "Air Jordan 1 Retro High OG Chicago Lost & Found" — where the right
 answer is *no* answer.
@@ -266,7 +266,7 @@ vocabulary, no floor), on identical data:
 | 10,000 listings | 608 ms | 15 ms | 41× |
 | 50,000 listings | 3,270 ms | 63 ms | 52× |
 
-Two caveats worth stating plainly: 100% on 34 queries means the eval set is small, not that
+Two caveats worth stating plainly: 100% on 37 queries means the eval set is small, not that
 retrieval is solved — the "Lost & Found" case above was found by a user typing one shoe name,
 not by the suite — extend `GOLDEN` and `NEGATIVES` in the benchmark as you add shoes. And
 the speed figures are on a synthetic catalogue with realistic vocabulary spread; a corpus
@@ -322,7 +322,7 @@ print("saving:", products[0].savings(size="9"), "| still at retail:", products[0
 ## Tests
 
 ```bash
-python3 -m unittest discover -s tests -t . -v   # 141 tests, no network, no API key
+python3 -m unittest discover -s tests -t . -v   # 144 tests, no network, no API key
 ```
 
 Coverage is weighted toward the parts that are easy to get quietly wrong: title parsing,
@@ -348,5 +348,5 @@ sneakerrag/
   sources/       http (robots-aware) · jsonld · site specs · adapters
 data/fixtures/   synthetic sample catalogue for the seven sites
 tools/           fixture generator, speed + quality benchmark
-tests/           141 unit + integration tests
+tests/           144 unit + integration tests
 ```

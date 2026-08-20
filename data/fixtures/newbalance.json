@@ -31,7 +31,7 @@
       "condition": "new",
       "gender": "men",
       "image": "https://images.example.com/new-balance-990v6.jpg",
-      "scraped_at": "2026-08-19T18:05:03+00:00"
+      "scraped_at": "2026-08-19T19:00:32+00:00"
     },
     {
       "title": "550 Unisex",
@@ -63,7 +63,7 @@
       "condition": "new",
       "gender": "unisex",
       "image": "https://images.example.com/new-balance-550.jpg",
-      "scraped_at": "2026-08-19T04:05:03+00:00"
+      "scraped_at": "2026-08-19T05:00:32+00:00"
     }
   ]
 }

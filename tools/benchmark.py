@@ -66,6 +66,9 @@ GOLDEN: list[tuple[str, str | tuple[str, ...]]] = [
     ("af 1 white", "CW2288-111"),
     ("silver sea salt new balance", "M1906RA"),
     ("nike dunks size 13", "DD1391-100"),
+    ("air jordan 1 retro high og chicago lost and found", "DZ5485-612"),
+    ("aj1 lost and found", "DZ5485-612"),
+    ("jordan 1 chicago", "DZ5485-612"),
 ]
 
 # Shoes the catalogue does not carry. The right answer is *no* answer: returning
@@ -80,7 +83,7 @@ NEGATIVES: list[str] = [
     # Long, detailed names for shoes we do not stock: the colorway slang and
     # generic words ("retro", "high", "og") in these used to be enough to drag
     # back a superficially similar listing.
-    "air jordan 1 retro high og chicago lost and found",
+    "air jordan 4 retro bred reimagined",
     "yeezy 350 v2 zebra",
     "new balance 2002r protection pack",
 ]

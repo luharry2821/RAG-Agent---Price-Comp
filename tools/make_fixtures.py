@@ -36,11 +36,16 @@ CATALOG = [
     ("New Balance", "990v6", "Grey", "M990GL6", 200.0, "men", 0.30, True),
     ("New Balance", "550", "White/Green", "BB550PB1", 120.0, "unisex", 0.20, True),
     ("New Balance", "1906R", "Silver/Sea Salt", "M1906RA", 165.0, "unisex", 0.60, False),
+    # Jordan is a Nike sub-brand and this release is long sold out at retail:
+    # resale-only, heavily hyped, and priced per size well above MSRP.
+    ("Air Jordan", "1 Retro High OG", "Chicago Lost and Found", "DZ5485-612",
+     180.0, "men", 0.95, False),
 ]
 
 SIZES = ["7", "7.5", "8", "8.5", "9", "9.5", "10", "10.5", "11", "11.5", "12", "13"]
 
-BRAND_SITE = {"Nike": "nike", "adidas": "adidas", "New Balance": "newbalance"}
+BRAND_SITE = {"Nike": "nike", "Air Jordan": "nike", "adidas": "adidas",
+              "New Balance": "newbalance"}
 
 # key -> title template, shows style code, shipping, fees, ask multiplier range
 RESALE_SITES = {
