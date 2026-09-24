@@ -9,3 +9,6 @@ dist/
 # Local catalogue + scrape cache (regenerate with `sneakerrag ingest`)
 data/catalog.db
 .cache/
+
+# Local secrets (RETELL_API_KEY, etc.) - see .env.example
+.env

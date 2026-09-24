@@ -1,0 +1,11 @@
+{
+  "mcpServers": {
+    "retell": {
+      "type": "http",
+      "url": "https://mcp.retellai.com",
+      "headers": {
+        "Authorization": "${RETELL_API_KEY}"
+      }
+    }
+  }
+}
